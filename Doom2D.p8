@@ -1,9 +1,32 @@
 pico-8 cartridge // http://www.pico-8.com
 version 32
 __lua__
-Game = { time=0, objects = {}, mousePositionX = 0 }
+Game = { 
+    time=0, 
+    objects = {}, 
+    mousePositionX = 0 ,
+    --You need to start Pico8 with the following parameters: -display_x 2 -displays_y 2
+    screens = {
+        x = 1,
+        y = 1
+    },
+    dimension = function()
+        return {
+            w = x * 128,
+            h = y * 128
+        }
+    end,
+    fov = 0.1,
+    rotation = {}
+}
+
+Cache = {
+    rayUnitStepSize = {},
+    forwardVector = {}
+}
 
 depth = {}
+
 
 Textures = {
     [1] = {
@@ -47,6 +70,7 @@ Map = {
 }
 
 
+--Old renderer to display the player on the 2d Map
 C_Renderer_Dot = {}
 function C_Renderer_Dot.new(self,dotSize)
     return {
@@ -62,31 +86,16 @@ function C_Renderer_Line.new(self, renderDistance)
     return{
         renderDistance = renderDistance or 100,
         draw = function(self,owner)
-            local cameraDir = getForwardVector(owner.transform.rotation+90)
-            local distance
-            local fov, cameraPlaneSite, textureResolution = 0.3, 5, 8
             local groundColor, ceilingColor = 3, 2
-            local shakeStrength = 2
+            local shakeStrength = 5
+
             depth = {}
             
-            local center =  64 + sin(Game.time/50) * 5
+            local center =  64 + sin(Game.time/50) * shakeStrength
             rectfill(0,0, 128, center, ceilingColor)
             rectfill(0,center, 128, 128, groundColor)
-            local rotation = owner.transform.rotation
-            local forwardVector = getForwardVector(rotation) --Used for camera plane offset
-            local rightVector = getForwardVector(rotation + 90) --Used for camera plane
-            local leftFOVVector = getForwardVector(rotation - fov * 64) --Used for FOV range left
-            local rightFOVVector = getForwardVector(rotation + fov * 64) --Used for FOV range right
             for i = -64, 64 do
-                f = (i + 64) / 128
-
-                --OLD: Optimize by lerping RayDir
-                --PROBLEM: Texture Projection was wrong, probably rayUnitStepSize calculated wrong
-                --rayDir = { x = leftFOsVVector.x + f * (rightFOVVector.x - leftFOVVector.x),  y = leftFOVVector.y + f * (rightFOVVector.y - leftFOVVector.y)}
-                
-                local rayDir = getForwardVector(rotation+i*fov)
-                local ray = self:rayCast({ x = owner.transform.position.x, y = owner.transform.position.y}, rayDir)
-                
+                local ray = self:rayCast(owner.transform.position, mod(owner.transform.rotation + i * 0.3, 360))
                 if(ray.texture != 0) then
                     local lineheight = flr(128 / ray.distance)
                     --Print to Screen
@@ -94,27 +103,22 @@ function C_Renderer_Line.new(self, renderDistance)
                 end
                 --Store depth data for sprite rendering
                 add(depth, ray.distance)
-                
-                --Debug Values
-                --if(i == 0) then
-                --    print(rayDir.x .. ", " .. rayDir.y)
-                --    print(ray.rayPos.x .. ", " .. ray.rayPos.y)
-                --    print(ray.textureCoordinate)
-                --end
             end 
             
         end,
-        rayCast = function(self, rayPos, rayDir)
+        rayCast = function(self, rayPos, rotation)
             local mapCheck = convertToCell(rayPos.x, rayPos.y, true)
             local distance = 0.1
             local texture = getMapLocal(mapCheck.x, mapCheck.y)
+            local rayDir = getForwardVector(rotation)
             rayPos = convertToCell(rayPos.x, rayPos.y, false)
             
             --Checks if camera plane is rendering in wall
             if(texture == 0) then 
 
                 --Precalculation
-                local rayUnitStepSize = { x = sqrt(1 + (rayDir.y / rayDir.x)^2), y = sqrt(1 + (rayDir.x / rayDir.y)^2)}
+                --local rayUnitStepSize = { x = sqrt(1 + (rayDir.y / rayDir.x)^2), y = sqrt(1 + (rayDir.x / rayDir.y)^2)}
+                local rayUnitStepSize = Cache.rayUnitStepSize[flr(mod(rotation,360)/Game.fov)+1]
                 local rayLength = {}
                 local step = {}
 
@@ -163,6 +167,7 @@ end
 
 C_PlayerController = {}
 C_PlayerController.new = function(self, speed, rotationSpeed)
+    poke(0x5f2d,0x5)
     return {
         speed = speed or 1,
         rotationSpeed = rotationSpeed,
@@ -172,16 +177,11 @@ C_PlayerController.new = function(self, speed, rotationSpeed)
             local right = getForwardVector(owner.transform.rotation + 90 )
 
             --Rotation
-            if(btn(0,0)) then owner.transform.rotation-=self.rotationSpeed end
-            if(btn(1,0)) then owner.transform.rotation+=self.rotationSpeed end
-
-            --OLD: Control rotation using mouse
-            --PROBLEM: Mouse can not lock to window, so can not rotate fully
-            --poke(0x5F2D, 1)
-            --local mousePos = stat(32)
-            --owner.transform.rotation += flr(mousePos - Game.mousePositionX)
-            --Game.mousePositionX = mousePos
-
+            --OLD: Rotation using arrow keys
+            --if(btn(0,0)) then owner.transform.rotation-=self.rotationSpeed end
+            --if(btn(1,0)) then owner.transform.rotation+=self.rotationSpeed end
+            owner.transform.rotation+=stat(38) / 10
+            owner.transform.rotation = mod(owner.transform.rotation,360)
 
             if(btn(1,1)) then
                 owner.velocity.x += right.x * self.speed
@@ -217,11 +217,11 @@ Entity = {}
 Entity.new = function (self, x, y)
     local me = {
         transform = { 
-            position = { x = x, y = y}, 
+            position = { x = x, y = y }, 
             rotation = 1, 
             scale = 1
         },
-        components = {C_PlayerController:new(1, 3.33)},
+        components = {C_PlayerController:new(1, 3)},
         renderComponents = {C_Renderer_Line:new(100)},
         draw = function(self)
             foreach(self.renderComponents, function(obj) obj:draw(self) end)
@@ -249,7 +249,7 @@ function convertToCell(x, y, round)
 end
 
 function getForwardVector(rotation)
-    return {x = sin(rotation/360), y = cos(rotation/360)}
+    return Cache.forwardVector[flr(mod(rotation,360)/Game.fov)+1]
 end
 
 --Gets a point on the map in local coordinates
@@ -265,27 +265,49 @@ function getMap(x,y)
     return getMapLocal(cord.x, cord.y)
 end
 
+function mod(x, m)
+    while x < 0 do
+        x += m
+    end
+    return x%m
+end
+
 function _init()
     --Spawn Player
 	ent = Entity:new(20, 20)
+    --Create direction cache
+    for x = 0, 360/Game.fov do
+        local rayDir = {x = sin(x*Game.fov/360), y = cos(x*Game.fov/360)}
+        add(Cache.forwardVector, {x = sin(x*Game.fov/360), y = cos(x*Game.fov/360)})
+        add(Cache.rayUnitStepSize, { x = sqrt(1 + (rayDir.y / rayDir.x)^2), y = sqrt(1 + (rayDir.x / rayDir.y)^2)})
+    end
 end
 
-function _update()
+function _update60()
 	Game.time += 1
-	for index, value in ipairs(Game.objects) do
-        value:update()
-	end
+    foreach(Game.objects, function(obj) obj:update(self) end)
 end
 
+--poke(0x5f36,1) -- to enable. **secret!**
 function _draw()
+--	di = stat(3)
 	cls()
-	for index, value in ipairs(Game.objects) do
-        value:draw()
-	end
+	foreach(Game.objects, function(obj) obj:draw(self) end)
     print("Memory: " .. stat(0))
     print("CPU: " .. stat(1))
     print("FPS: " .. stat(7))
+--	return di<2 --true means "give me another display to draw to
 end
+
+
+--_camera = camera --save original camera function reference
+--function camera(x,y)
+--	x = x or 0
+--	y = y or 0
+--	local dx = flr(stat(3) % Game.screens.x)
+--	local dy = flr(stat(3) / Game.screens.x)
+--	_camera(x+128*dx, y+128*dy)
+--end
 
 
 
