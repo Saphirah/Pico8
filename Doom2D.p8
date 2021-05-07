@@ -40,33 +40,22 @@ Textures = {
 }
 
 Map = {
-    width = 19,
+    width = 38,
     height = 10,
     --TODO: Use for different heights
-    height = {
-        1, 1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,
-        1, 0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 , 
-        1, 0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 , 
-        1, 0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 , 
-        1, 0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 , 
-        1, 0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 , 
-        1, 0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 , 
-        1, 0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 , 
-        1, 0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,0 ,1 , 
-        1, 1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 ,1 , 
-    },
     texture = {
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    }
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+        1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0, 2, 0, 1, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2,
+        1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2,
+        1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2,
+        1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 2,
+        1, 0, 0, 0, 1, 2, 2, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    },
+    height = texture
 }
 
 
@@ -108,7 +97,7 @@ function C_Renderer_Line.new(self, renderDistance)
         end,
         rayCast = function(self, rayPos, rotation)
             local mapCheck = convertToCell(rayPos.x, rayPos.y, true)
-            local distance = 0.1
+            local distance = 0
             local texture = getMapLocal(mapCheck.x, mapCheck.y)
             local rayDir = getForwardVector(rotation)
             rayPos = convertToCell(rayPos.x, rayPos.y, false)
@@ -167,12 +156,15 @@ end
 
 C_PlayerController = {}
 C_PlayerController.new = function(self, speed, rotationSpeed)
+    --Activate Mouse Lock
     poke(0x5f2d,0x5)
     return {
         speed = speed or 1,
         rotationSpeed = rotationSpeed,
         update = function(self, owner)            
-            owner.velocity = { x = 0, y = 0}
+            owner.velocity.x /= 1.1
+            owner.velocity.y /= 1.1
+            owner.angularVelocity /= 1.2
             local forward = getForwardVector(owner.transform.rotation)
             local right = getForwardVector(owner.transform.rotation + 90 )
 
@@ -180,8 +172,8 @@ C_PlayerController.new = function(self, speed, rotationSpeed)
             --OLD: Rotation using arrow keys
             --if(btn(0,0)) then owner.transform.rotation-=self.rotationSpeed end
             --if(btn(1,0)) then owner.transform.rotation+=self.rotationSpeed end
-            owner.transform.rotation+=stat(38) / 10
-            owner.transform.rotation = mod(owner.transform.rotation,360)
+            owner.angularVelocity += stat(38) / 50
+            owner.transform.rotation = mod(owner.transform.rotation + owner.angularVelocity,360)
 
             if(btn(1,1)) then
                 owner.velocity.x += right.x * self.speed
@@ -221,7 +213,12 @@ Entity.new = function (self, x, y)
             rotation = 1, 
             scale = 1
         },
-        components = {C_PlayerController:new(1, 3)},
+        velocity = {
+            x = 0,
+            y = 0
+        },
+        angularVelocity = 0,
+        components = {C_PlayerController:new(0.1, 3)},
         renderComponents = {C_Renderer_Line:new(100)},
         draw = function(self)
             foreach(self.renderComponents, function(obj) obj:draw(self) end)
