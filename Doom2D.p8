@@ -3,7 +3,9 @@ version 32
 __lua__
 Game = { 
     time=0, 
+    player = nil,
     objects = {}, 
+    sprites = {},
     mousePositionX = 0 ,
     --You need to start Pico8 with the following parameters: -display_x 2 -displays_y 2
     screens = {
@@ -17,7 +19,8 @@ Game = {
         }
     end,
     fov = 0.1,
-    rotation = {}
+    rotation = {},
+    center = 64
 }
 
 Cache = {
@@ -30,12 +33,20 @@ depth = {}
 
 Textures = {
     [1] = {
+        name = "Wall1",
         position = { x = 0, y = 0 },
         dimension = { w = 8, h = 8 }
     }, 
     [2] = {
+        name = "Wall2",
         position = { x = 8, y = 0 },
         dimension = { w = 8, h = 8 }
+    },
+    [3] = {
+        name = "Slenderman",
+        position = { x = 16, y = 0},
+        dimension = { w = 16, h = 16},
+        worldSize = { w = 400, h = 400 },
     }
 }
 
@@ -70,25 +81,83 @@ function C_Renderer_Dot.new(self,dotSize)
     }
 end
 
+Ray = {}
+Ray.new = function(rayPos, rotation)
+    local mapCheck = convertToCell(rayPos.x, rayPos.y, true)
+    local distance = 0
+    local texture = getMapLocal(mapCheck.x, mapCheck.y)
+    local rayDir = getForwardVector(rotation)
+    rayPos = convertToCell(rayPos.x, rayPos.y, false)
+    
+    --Checks if camera plane is rendering in wall
+    if(texture == 0) then 
+
+        --Precalculation
+        --local rayUnitStepSize = { x = sqrt(1 + (rayDir.y / rayDir.x)^2), y = sqrt(1 + (rayDir.x / rayDir.y)^2)}
+        local rayUnitStepSize = Cache.rayUnitStepSize[flr(mod(rotation,360)/Game.fov)+1]
+        local rayLength = {}
+        local step = {}
+
+        if(rayDir.x < 0) then
+            step.x = -1
+            rayLength.x = (rayPos.x - mapCheck.x) * rayUnitStepSize.x
+        else
+            step.x = 1
+            rayLength.x = (mapCheck.x + 1 - rayPos.x) * rayUnitStepSize.x
+        end
+
+        if(rayDir.y < 0) then
+            step.y = -1
+            rayLength.y = (rayPos.y - mapCheck.y) * rayUnitStepSize.y
+        else
+            step.y = 1
+            rayLength.y = (mapCheck.y + 1 - rayPos.y) * rayUnitStepSize.y
+        end
+        
+        --Raycasting steps
+        for i = 0, 25 do
+            if(rayLength.x < rayLength.y) then
+                mapCheck.x += step.x
+                distance = rayLength.x
+                rayLength.x += rayUnitStepSize.x
+            else
+                mapCheck.y += step.y
+                distance = rayLength.y
+                rayLength.y += rayUnitStepSize.y
+            end
+            
+            texture = getMapLocal(mapCheck.x, mapCheck.y)
+            if(texture != 0) then break end
+        end
+    end
+    return {
+        distance = distance, 
+        mapCoordinates = mapCheck,
+        texture = texture or 1,
+        textureCoordinate = ((rayPos.x + rayDir.x * distance) + (rayPos.y + rayDir.y * distance)) % 1, 
+        rayPos = {x = rayPos.x + rayDir.x * distance, y = rayPos.y + rayDir.y * distance}
+    }
+end
+
+
 C_Renderer_Line = {}
-function C_Renderer_Line.new(self, renderDistance)
+C_Renderer_Line.new = function(self, renderDistance)
     return{
         renderDistance = renderDistance or 100,
         draw = function(self,owner)
             local groundColor, ceilingColor = 3, 2
-            local shakeStrength = 5
+            local shakeStrength = 3
 
             depth = {}
-            
-            local center =  64 + sin(Game.time/50) * shakeStrength
-            rectfill(0,0, 128, center, ceilingColor)
-            rectfill(0,center, 128, 128, groundColor)
+            Game.center =  64 + sin(Game.time/100) * shakeStrength
+            rectfill(0,0, 128, Game.center, ceilingColor)
+            rectfill(0, Game.center, 128, 128, groundColor)
             for i = -64, 64 do
-                local ray = self:rayCast(owner.transform.position, mod(owner.transform.rotation + i * 0.3, 360))
+                local ray = Ray.new(owner.transform.position, mod(owner.transform.rotation + i * 0.3, 360))
                 if(ray.texture != 0) then
                     local lineheight = flr(128 / ray.distance)
                     --Print to Screen
-                    sspr(Textures[ray.texture].position.x + flr(ray.textureCoordinate * Textures[ray.texture].dimension.w), Textures[ray.texture].position.y, 1, Textures[ray.texture].dimension.h, 64+i, center-lineheight, 1, lineheight*2)
+                    sspr(Textures[ray.texture].position.x + flr(ray.textureCoordinate * Textures[ray.texture].dimension.w), Textures[ray.texture].position.y, 1, Textures[ray.texture].dimension.h, 64+i, Game.center-lineheight, 1, lineheight*2)
                 end
                 --Store depth data for sprite rendering
                 add(depth, ray.distance)
@@ -205,21 +274,48 @@ C_PlayerController.new = function(self, speed, rotationSpeed)
     }
 end
 
+C_SpriteRenderer = {}
+C_SpriteRenderer.new = function(self, spriteIndex)
+    return {
+        spriteIndex = spriteIndex,
+        draw = function(self, owner)
+            relativePos = { x = owner.transform.position.x - Game.player.transform.position.x, y = owner.transform.position.y - Game.player.transform.position.y }
+            distance = sqrt(relativePos.x * relativePos.x + relativePos.y * relativePos.y)
+            spriteAngle = mod(atan2(relativePos.y, relativePos.x) * 360 - Game.player.transform.rotation,360)
+            if spriteAngle > 180 then spriteAngle -= 360 end
+            --mod(asin(relativePos.y / sqrt(relativePos.x^2 + relativePos.y ^2)) * 360 - Game.player.transform.rotation, 360)-180
+            print("Angle: " .. spriteAngle, 5)
+            print("Distance: " .. distance)
+            size = 4 / distance;
+            if(spriteAngle <= 40 and spriteAngle >=-40) then
+                sspr(
+                    Textures[spriteIndex].position.x, 
+                    Textures[spriteIndex].position.y, 
+                    Textures[spriteIndex].dimension.w, 
+                    Textures[spriteIndex].dimension.h, 
+                    64 + spriteAngle * 3.6  - size * Textures[spriteIndex].worldSize.w / 2, 
+                    Game.center + (Textures[spriteIndex].worldSize.h -2000) * 0.25 / distance, 
+                    size * Textures[spriteIndex].worldSize.w, 
+                    size *  Textures[spriteIndex].worldSize.h)
+            end   
+        end
+    }
+end 
+
+function asin(y)
+    return atan2(sqrt(1-y*y),-y)
+end
+
 Entity = {}
-Entity.new = function (self, x, y)
+Entity.new = function(self, x, y)
     local me = {
         transform = { 
             position = { x = x, y = y }, 
             rotation = 1, 
             scale = 1
         },
-        velocity = {
-            x = 0,
-            y = 0
-        },
-        angularVelocity = 0,
-        components = {C_PlayerController:new(0.1, 3)},
-        renderComponents = {C_Renderer_Line:new(100)},
+        components = {},
+        renderComponents = {},
         draw = function(self)
             foreach(self.renderComponents, function(obj) obj:draw(self) end)
         end,
@@ -228,6 +324,25 @@ Entity.new = function (self, x, y)
         end
     }
     add(Game.objects, me)
+    return me
+end
+
+Sprite = {}
+Sprite.new = function(self, x, y, spriteIndex)
+    local me = Entity:new(x,y)
+    add(me.renderComponents, C_SpriteRenderer:new(spriteIndex))
+end
+
+Player = {}
+Player.new = function (self, x, y)
+    local me = Entity:new(x, y)
+    me.velocity = {
+        x = 0,
+        y = 0
+    }
+    me.angularVelocity = 0
+    add(me.components, C_PlayerController:new(0.05, 3))
+    add(me.renderComponents, C_Renderer_Line:new(100))
     return me
 end
 
@@ -271,7 +386,9 @@ end
 
 function _init()
     --Spawn Player
-	ent = Entity:new(20, 20)
+    Game.player = Player:new(20, 20)
+    Sprite:new(22,22, 3)
+    
     --Create direction cache
     for x = 0, 360/Game.fov do
         local rayDir = {x = sin(x*Game.fov/360), y = cos(x*Game.fov/360)}
@@ -290,9 +407,9 @@ function _draw()
 --	di = stat(3)
 	cls()
 	foreach(Game.objects, function(obj) obj:draw(self) end)
-    print("Memory: " .. stat(0))
-    print("CPU: " .. stat(1))
-    print("FPS: " .. stat(7))
+    --print("Memory: " .. stat(0))
+    --print("CPU: " .. stat(1))
+    --print("FPS: " .. stat(7))
 --	return di<2 --true means "give me another display to draw to
 end
 
@@ -310,11 +427,19 @@ end
 
 
 __gfx__
-11111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-14444441188dd8810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-1455554118dddd810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-155dd55118dffd810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-155dd55118dffd810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-1455554118dddd810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-14444441188dd8810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-11111111111111110000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+11111111111111110000777777770000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+14444441188dd8810007077007707000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1455554118dddd810070007777000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+155dd55118dffd810070000770000700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+155dd55118dffd8100700dddddd00700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+1455554118dddd810000d0dddd0d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+14444441188dd8810000d0dddd0d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+11111111111111110000d0dddd0d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000d00dddd00d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000d00dddd00d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000d00d00d00d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000d00d00d00d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000d00d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000d00d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000d00d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0000000000000000000000d00d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
