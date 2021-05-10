@@ -149,7 +149,7 @@ C_Renderer_Line.new = function(self, renderDistance)
             local shakeStrength = 3
 
             depth = {}
-            Game.center =  64 + sin(Game.time/100) * shakeStrength
+            Game.center =  64 + sin(Game.time/100) * shakeStrength + owner.transform.position.z
             rectfill(0,0, 128, Game.center, ceilingColor)
             rectfill(0, Game.center, 128, 128, groundColor)
             for i = -64, 64 do
@@ -243,6 +243,11 @@ C_PlayerController.new = function(self, speed, rotationSpeed)
             --if(btn(1,0)) then owner.transform.rotation+=self.rotationSpeed end
             owner.angularVelocity += stat(38) / 50
             owner.transform.rotation = mod(owner.transform.rotation + owner.angularVelocity,360)
+            if(owner.transform.position.z > 0) then 
+                owner.velocity.z -= 0.1
+            elseif(owner.velocity.z != 0) then
+                owner.velocity.z = 0
+            end
 
             if(btn(1,1)) then
                 owner.velocity.x += right.x * self.speed
@@ -251,6 +256,10 @@ C_PlayerController.new = function(self, speed, rotationSpeed)
             if(btn(0,1)) then 
                 owner.velocity.x -= right.x * self.speed
                 owner.velocity.y -= right.y * self.speed
+            end
+
+            if(btn(4,1) and owner.transform.position.z == 0) then
+                owner.velocity.z = 2
             end
 
             --Movement with collision checks
@@ -269,7 +278,8 @@ C_PlayerController.new = function(self, speed, rotationSpeed)
             if(getMap( owner.transform.position.x, owner.transform.position.y + owner.velocity.y ) == 0) then 
                 owner.transform.position.y += owner.velocity.y
             end
-            
+
+            owner.transform.position.z = max(owner.transform.position.z + owner.velocity.z, 0)
         end
     }
 end
@@ -278,46 +288,66 @@ C_SpriteRenderer = {}
 C_SpriteRenderer.new = function(self, spriteIndex)
     return {
         spriteIndex = spriteIndex,
+        spriteAngle = 0,
+        distance = 0,
         draw = function(self, owner)
             --Calculate angle and distance
-            relativePos = { x = owner.transform.position.x - Game.player.transform.position.x, y = owner.transform.position.y - Game.player.transform.position.y }
-            distance = sqrt(relativePos.x * relativePos.x + relativePos.y * relativePos.y)
-            spriteAngle = mod(atan2(relativePos.y, relativePos.x) * 360 - Game.player.transform.rotation,360)
+            local relativePos = { x = owner.transform.position.x - Game.player.transform.position.x, y = owner.transform.position.y - Game.player.transform.position.y }
+            --Cheap average distance
+            self.distance = abs(relativePos.x) + abs(relativePos.y)
+            --OLD: self.distance = sqrt(relativePos.x * relativePos.x + relativePos.y * relativePos.y)
+            self.spriteAngle = mod(atan2(relativePos.y, relativePos.x) * 360 - Game.player.transform.rotation,360)
             --Align to center of the screen
-            if spriteAngle > 180 then spriteAngle -= 360 end
+            if self.spriteAngle > 180 then self.spriteAngle -= 360 end
             --DEBUG Log
-            print("Angle: " .. spriteAngle, 5)
-            print("Distance: " .. distance)
             --Calculate Sprite Scale
-            size = 4 / distance;
+            local size = 5 / self.distance;
             --Render Sprite when in View
-            if(spriteAngle <= 40 and spriteAngle >=-40) then
-                halfSize = flr(size * Textures[spriteIndex].worldSize.w / 2)
-                for x = -halfSize, halfSize do 
-                    screenPosX = flr(64 + spriteAngle * 3.6 + x)
-                    if(screenPosX >= 0 and screenPosX <= 128) then
-                        if(distance < depth[screenPosX+1] * 8) then
-                            sspr(
-                                Textures[spriteIndex].position.x + Textures[spriteIndex].dimension.w * (x + halfSize) / (halfSize * 2), 
-                                Textures[spriteIndex].position.y, 
-                                1, 
-                                Textures[spriteIndex].dimension.h, 
-                                screenPosX, 
-                                Game.center + (Textures[spriteIndex].worldSize.h -2000) * 0.25 / distance, 
-                                1, 
-                                size *  Textures[spriteIndex].worldSize.h
-                            )
+            if(self.spriteAngle <= 40 and self.spriteAngle >=-40) then
+                local halfSize = flr(size * Textures[spriteIndex].worldSize.w / 2)
+                local screenPosY = Game.center + (Textures[spriteIndex].worldSize.h -2000) * 0.25 / self.distance + Game.player.transform.position.z
+
+                --Occlusion Check
+                local isOccluded = false
+                local screenPosXLeft = flr(64 + self.spriteAngle * 3.6 -halfSize)
+                local screenPosXRight = flr(64 + self.spriteAngle * 3.6 + halfSize)
+                for x = max(screenPosXLeft,1), min(screenPosXRight, 128) do
+                    if(self.distance > depth[x] * 16) then
+                        isOccluded = true
+                        break
+                    end
+                end
+
+                --Slow Method: Render Sprite Stripes
+                if isOccluded then
+                    for x = -halfSize, halfSize do 
+                        local screenPosX = flr(64 + self.spriteAngle * 3.6 + x)
+                        if(screenPosX >= 0 and screenPosX <= 128) then
+                            if(self.distance < depth[screenPosX+1] * 16) then
+                                sspr(
+                                    Textures[spriteIndex].position.x + Textures[spriteIndex].dimension.w * (x + halfSize) / (halfSize * 2), Textures[spriteIndex].position.y, 
+                                    1, Textures[spriteIndex].dimension.h, 
+                                    screenPosX, screenPosY, 
+                                    1, size *  Textures[spriteIndex].worldSize.h
+                                )
+                                
+                            end
                         end
                     end
+                
+                --Fast Method: Render whole Sprite
+                else
+                    sspr(
+                                    Textures[spriteIndex].position.x, Textures[spriteIndex].position.y, 
+                                    Textures[spriteIndex].dimension.w, Textures[spriteIndex].dimension.h, 
+                                    screenPosXLeft, screenPosY, 
+                                    screenPosXRight - screenPosXLeft, size *  Textures[spriteIndex].worldSize.h
+                    )
                 end
             end   
         end
     }
 end 
-
-function asin(y)
-    return atan2(sqrt(1-y*y),-y)
-end
 
 Entity = {}
 Entity.new = function(self, x, y)
@@ -351,8 +381,10 @@ Player.new = function (self, x, y)
     local me = Entity:new(x, y)
     me.velocity = {
         x = 0,
-        y = 0
+        y = 0,
+        z = 0
     }
+    me.transform.position.z = 0
     me.angularVelocity = 0
     add(me.components, C_PlayerController:new(0.05, 3))
     add(me.renderComponents, C_Renderer_Line:new(100))
@@ -401,6 +433,8 @@ function _init()
     --Spawn Player
     Game.player = Player:new(20, 20)
     Sprite:new(22,22, 3)
+    Sprite:new(24,22, 3)
+    Sprite:new(28,22, 3)
     
     --Create direction cache
     for x = 0, 360/Game.fov do
@@ -423,6 +457,7 @@ function _draw()
     --print("Memory: " .. stat(0))
     --print("CPU: " .. stat(1))
     --print("FPS: " .. stat(7))
+    print(Game.player.velocity.z)
 --	return di<2 --true means "give me another display to draw to
 end
 
