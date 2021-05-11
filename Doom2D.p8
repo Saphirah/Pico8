@@ -2,11 +2,12 @@ pico-8 cartridge // http://www.pico-8.com
 version 32
 __lua__
 Game = { 
-    time=0, 
+    time = 0,
+    deltaTime = 0,
     player = nil,
     objects = {}, 
     sprites = {},
-    mousePositionX = 0 ,
+    mousePositionX = 0,
     --You need to start Pico8 with the following parameters: -display_x 2 -displays_y 2
     screens = {
         x = 1,
@@ -52,7 +53,7 @@ Textures = {
 
 Map = {
     width = 38,
-    height = 10,
+    height = 12,
     --TODO: Use for different heights
     texture = {
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2,
@@ -63,6 +64,8 @@ Map = {
         1, 0, 0, 0, 1, 2, 2, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1,
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     },
@@ -149,7 +152,7 @@ C_Renderer_Line.new = function(self, renderDistance)
             local shakeStrength = 3
 
             depth = {}
-            Game.center =  64 + sin(Game.time/100) * shakeStrength + owner.transform.position.z
+            Game.center =  64 + sin(time()) * shakeStrength + owner.transform.position.z
             rectfill(0,0, 128, Game.center, ceilingColor)
             rectfill(0, Game.center, 128, 128, groundColor)
             for i = -64, 64 do
@@ -224,11 +227,10 @@ C_Renderer_Line.new = function(self, renderDistance)
 end
 
 C_PlayerController = {}
-C_PlayerController.new = function(self, speed, rotationSpeed)
+C_PlayerController.new = function(self, rotationSpeed)
     --Activate Mouse Lock
     poke(0x5f2d,0x5)
     return {
-        speed = speed or 1,
         rotationSpeed = rotationSpeed,
         update = function(self, owner)            
             owner.velocity.x /= 1.1
@@ -250,12 +252,12 @@ C_PlayerController.new = function(self, speed, rotationSpeed)
             end
 
             if(btn(1,1)) then
-                owner.velocity.x += right.x * self.speed
-                owner.velocity.y += right.y * self.speed
+                owner.velocity.x += right.x * owner.movementSpeed * Game.deltaTime
+                owner.velocity.y += right.y * owner.movementSpeed * Game.deltaTime
             end
             if(btn(0,1)) then 
-                owner.velocity.x -= right.x * self.speed
-                owner.velocity.y -= right.y * self.speed
+                owner.velocity.x -= right.x * owner.movementSpeed * Game.deltaTime
+                owner.velocity.y -= right.y * owner.movementSpeed * Game.deltaTime
             end
 
             if(btn(4,1) and owner.transform.position.z == 0) then
@@ -264,12 +266,12 @@ C_PlayerController.new = function(self, speed, rotationSpeed)
 
             --Movement with collision checks
             if(btn(2,1)) then 
-                owner.velocity.x += forward.x * self.speed
-                owner.velocity.y += forward.y * self.speed
+                owner.velocity.x += forward.x * owner.movementSpeed * Game.deltaTime
+                owner.velocity.y += forward.y * owner.movementSpeed * Game.deltaTime
             end
             if(btn(3,1)) then 
-                owner.velocity.x -= forward.x * self.speed
-                owner.velocity.y -= forward.y * self.speed
+                owner.velocity.x -= forward.x * owner.movementSpeed * Game.deltaTime
+                owner.velocity.y -= forward.y * owner.movementSpeed * Game.deltaTime
             end
 
             if(getMap( owner.transform.position.x + owner.velocity.x, owner.transform.position.y ) == 0) then 
@@ -386,7 +388,8 @@ Player.new = function (self, x, y)
     }
     me.transform.position.z = 0
     me.angularVelocity = 0
-    add(me.components, C_PlayerController:new(0.05, 3))
+    me.movementSpeed = 2
+    add(me.components, C_PlayerController:new(3))
     add(me.renderComponents, C_Renderer_Line:new(100))
     return me
 end
@@ -440,12 +443,14 @@ function _init()
     for x = 0, 360/Game.fov do
         local rayDir = {x = sin(x*Game.fov/360), y = cos(x*Game.fov/360)}
         add(Cache.forwardVector, {x = sin(x*Game.fov/360), y = cos(x*Game.fov/360)})
-        add(Cache.rayUnitStepSize, { x = sqrt(1 + (rayDir.y / rayDir.x)^2), y = sqrt(1 + (rayDir.x / rayDir.y)^2)})
+        --add(Cache.rayUnitStepSize, { x = sqrt(1 + (rayDir.y / rayDir.x)^2), y = sqrt(1 + (rayDir.x / rayDir.y)^2)})
+        add(Cache.rayUnitStepSize, { x = abs(1/rayDir.x), y = abs(1/rayDir.y)})
     end
 end
 
 function _update60()
-	Game.time += 1
+    Game.deltaTime = time() - Game.time
+    Game.time = time()
     foreach(Game.objects, function(obj) obj:update(self) end)
 end
 
