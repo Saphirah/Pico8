@@ -245,7 +245,7 @@ Projectile_Pellet = {
         add(me.components, C_VelocityController:new(false))
         me.velocity = vec2(velocityX, velocityY)
         me.onHitGround = function(self)
-            
+            me:destroy()
         end
 }
 
@@ -300,8 +300,8 @@ function generateMap()
     local seed = rnd(100)
     Map.mapData = {}    
     cls()
-    for screenX = 1, Map.screens.x do
-        add(Map.mapData, {})
+    for screenX = 0, Map.screens.x-1 do
+        Map.mapData[screenX] = {}
         for y = 0, 127 do
             for x = 0, 127 do
                 local distance = 64 + Simplex2D((x + screenX * 128) / 200, seed) * 25 + Simplex2D((x + screenX * 128) / 50, seed) * 5 - y
@@ -350,11 +350,23 @@ function redrawRegion(posX, posY, width, height)
     end
 end
 
+function redrawPixel(posX, posY)
+    local pixel = Map:getMapData(posX, posY)
+    local color = sget(posX % Textures[pixel].dimension.x + Textures[pixel].position.x, posY % Textures[pixel].dimension.y + Textures[pixel].position.y)
+    pset(posX, posY, color)
+end
+
 function mod(x, m)
     while x < 0 do
         x += m
     end
     return x%m
+end
+
+function updatePellets()
+    for pellet in all(Map.pellets) do
+        redrawPixel(pellet.transform.position.x, pellet.transform.position.y)
+    end
 end
 
 function _init()
@@ -384,6 +396,7 @@ function _draw()
             end
         end
         foreach(Game.objects, function(obj) obj:draw(self) end)
+        updatePellets()
         return stat(3)<3
     end
 end
