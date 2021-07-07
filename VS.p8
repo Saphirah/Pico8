@@ -11,7 +11,9 @@ poke(0x5f5d,99999)
 
 Game = {
     objects = {},
-    pellets = {}
+    pellets = {},
+    players = {},
+    weaponTimer = 300
 }
 
 Map = {
@@ -22,12 +24,18 @@ Map = {
     getMapData = function(self, x, y)
         local dx = min(max(flr(x), 0), Map.screens.x*127)
         local dy = min(max(flr(y), 0), Map.screens.y*127)
-        return Map.mapData[min(max(flr(x/128), 0), 3)][dy * 128 + (dx % 128)]
+        return Map.mapData[min(max(flr(dx/128), 0), 3)][dy * 128 + (dx % 128)]
     end,
     getMapDataByScreen = function(self, x, y, screen)
         local dx = min(max(flr(x), 0), Map.screens.x*127)
         local dy = min(max(flr(y), 0), Map.screens.y*127)
         return Map.mapData[screen][flr(dy) * 128 + flr(dx)]
+    end,
+    setMapData = function(self, x, y, index)
+        local dx = min(max(flr(x), 0), Map.screens.x*127)
+        local dy = min(max(flr(y), 0), Map.screens.y*127)
+        add(Map.redrawBuffer, { position = vec2(dx, dy) })
+        Map.mapData[min(max(flr(dx/128), 0), 3)][dy * 128 + (dx % 128)] = index
     end,
     redrawBuffer = {}
 }
@@ -48,15 +56,25 @@ Textures = {
         position = vec2(96, 0),
         dimension = vec2(16, 16)
     },
-    --Player
+    --Stone
     [2] = {
-        position = vec2(0, 0),
-        dimension = vec2(8, 8)
+        position = vec2(112, 0),
+        dimension = vec2(16, 16)
     },
     --Grass
     [3] = {
         position = vec2(96, 16),
         dimension = vec2(16, 16)
+    },
+    --Player 1
+    [5] = {
+        position = vec2(0, 0),
+        dimension = vec2(8, 8)
+    },
+    --Player 2
+    [6] = {
+        position = vec2(8, 0),
+        dimension = vec2(8, 8)
     },
     --Weapons
     --Shotgun
@@ -87,6 +105,37 @@ Textures = {
     --Sniper
     [15] = {
         position = vec2(56, 0),
+        dimension = vec2(8, 8)
+    },
+    --WeaponDrops
+    --Shotgun
+    [20] = {
+        position = vec2(16, 8),
+        dimension = vec2(8, 8)
+    },
+    --LaserWeapon
+    [21] = {
+        position = vec2(24, 8),
+        dimension = vec2(8, 8)
+    },
+    --LaserBall
+    [22] = {
+        position = vec2(32, 8),
+        dimension = vec2(8, 8)
+    },
+    --AK
+    [23] = {
+        position = vec2(40, 8),
+        dimension = vec2(8, 8)
+    },
+    --Pistol
+    [24] = {
+        position = vec2(48, 8),
+        dimension = vec2(8, 8)
+    },
+    --Sniper
+    [25] = {
+        position = vec2(56, 8),
         dimension = vec2(8, 8)
     }
 }
@@ -123,7 +172,7 @@ C_SpriteRenderer = {
             spriteIndex = spriteIndex,
             dim = Textures[spriteIndex].dimension,
             draw = function(self, owner)
-                
+                if(owner.transform.position.x == nil) then return end
                 local drawPos = vec2(owner.transform.position.x - self.dim.x / 2, owner.transform.position.y - self.dim.y)
                 local posX = drawPos.x - stat(3) * 128
                 if((posX >= 0 and posX < 128) or (posX + self.dim.x >= 0 and posX + self.dim.x < 128)) then
@@ -227,48 +276,52 @@ C_VelocityController = {
 
 --Component that controls the player movement
 C_PlayerController = {
-    new = function(self)
+    new = function(self, playerID)
         return {
-            stairDirection = 1,
+            stairDirection = 0,
             stairPosition = {},
+            stairDuration = 20,
             update = function(self, owner)
                 owner.velocity.x *= 0.75
                 owner.velocity.y -= 0.1
 
                 --Go Right
-                if(btn(1,1)) then
+                if(btn(1, owner.playerID)) then
                     owner.velocity.x += 0.4
                     owner.isFacingRight = true
                 end
 
                 --Go Left
-                if(btn(0,1)) then 
+                if(btn(0, owner.playerID)) then 
                     owner.velocity.x += -0.4
                     owner.isFacingRight = false
                 end
 
+                --Dig
+                if(btn(3, owner.playerID)) then 
+                    owner.velocity.y = -2
+                    Explosion:new(owner.transform.position.x, owner.transform.position.y, 1)
+                end
+
                 --Jump
-                if(btn(4,1)) then 
+                if(btn(4, owner.playerID)) then 
                     if(Map:getMapData(owner.transform.position.x, owner.transform.position.y + 1) > 0) then
                         owner.velocity.y = 2
                     end
                 end
 
-                --Shoot, now controlled by weapons due to different behaviours
-                --if(btn(5,1)) then 
-                    --owner.weapon:shoot()
-                --end
-
                 --Build
-                if(btn(5,1) and btn(4,1)) then 
-                    if(stairDirection == 0) then
-                        stairDirection = owner.isFacingRight
-                    end
-                else
-                    if(not stairDirection == 0) then
-                        stairDirection = 0
-                        stairPosition = {}
-                    end
+                if(btnp(2, owner.playerID)) then
+                    self.stairDirection = owner.isFacingRight 
+                    self.stairPosition = vec2(owner.transform.position.x, owner.transform.position.y)
+                    self.stairDuration = 20
+                end
+                if(btn(2, owner.playerID) and self.stairDuration > 0) then 
+                    self.stairPosition.x += self.stairDirection and 1 or -1
+                    self.stairPosition.y -= 1
+                    self.stairDuration -= 1
+                    Map:setMapData(self.stairPosition.x, self.stairPosition.y, 2)
+                    Map:setMapData(self.stairPosition.x, self.stairPosition.y+1, 2)
                 end
             end
         }
@@ -307,9 +360,38 @@ C_HealthSystem = {
     end
 }
 
+--Component grants the player a weapon when coming close to the entity
+C_WeaponPickup = {
+    new = function(self, weaponID)
+        return {
+            pickUpDistance = 5,
+            weaponID = weaponID,
+            update = function(self, owner)
+                for player in all(Game.players) do
+                    --Cheap distance check to all players
+                    if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
+                        if(not (player.weapon == nil)) then player.weapon:destroy() end
+                        owner:destroy()
+                        --Lua is lacking switch case so we are doing if's
+                        if(self.weaponID == 20) then
+                            player.weapon = Weapon_Shotgun:new(player)
+                        elseif(self.weaponID == 21) then
+                            player.weapon = Weapon_LaserWeapon:new(player)
+                        else
+                            player.weapon = Weapon_AK:new(player)
+                        end
+                        --printh("Picked Up Weapon: "..distance(player.transform.position, owner.transform.position)..", PlayerPosition: "..player.transform.position.x.."/"..player.transform.position.y..", WeaponPosition: "..owner.transform.position.x.."/"..owner.transform.position.y)
+                        return
+                    end
+                end
+            end
+        }
+    end
+}
+
 Weapon = {
     new = function(self, parent, spriteID)
-        local me = Entity:new()
+        local me = Entity:new(0, 0)
         me.parent = parent
         add(me.renderComponents, C_SpriteRenderer:new(spriteID))
         me.update = function(self)
@@ -318,7 +400,7 @@ Weapon = {
             self:isShooting()
         end
         me.isShooting = function(self)
-            if(btnp(5,1)) then
+            if(btnp(5, self.parent.playerID)) then
                 self:shoot()
             end
         end
@@ -345,13 +427,13 @@ Weapon_AK = {
         me.cooldown = 2
         me.shoot = function(self)
             self.parent.velocity.x = self.parent.isFacingRight and -1 or 1
-            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, 0, 7, 50, 1)
+            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(0.5) - 0.25, 7, 50, 1)
         end
         me.isShooting = function(self)
             if(self.cooldown > 0) then
                 self.cooldown -= 1
             else
-                if(btn(5,1)) then
+                if(btn(5, self.parent.playerID)) then
                     self:shoot()
                     self.cooldown = 2
                 end
@@ -411,6 +493,28 @@ Projectile_Laser = {
     end
 }
 
+WeaponDrop = {
+    new = function(self, weaponID)
+        local me = Entity:new(flr(rnd(516)), 0)
+        me.weaponID = weaponID
+        me.lastDownVelocity = 0
+        me.onHitGround = function(self)
+            self.velocity.y = 0.3
+        end
+        add(me.components, C_Lifetime:new(900))
+        add(me.components, C_WeaponPickup:new(weaponID))
+        add(me.components, {
+            update = function(self, owner)
+                owner.velocity.y -= 0.01
+                self.lastDownVelocity = owner.velocity.y
+            end
+        })
+        add(me.components, C_VelocityController:new(true))
+        add(me.renderComponents, C_SpriteRenderer:new(weaponID))
+        return me
+    end
+}
+
 Entity = {
     new = function(self, x, y)
         local me = {
@@ -440,19 +544,30 @@ Entity = {
 }
 
 Player = {
-    new = function(self, x, y)
+    new = function(self, x, y, playerID)
         local entity = Entity:new(x, y)
         entity.update = function(self)
             foreach(self.components, function(obj) obj:update(self) end)
         end
-        entity.weapon = Weapon_AK:new(entity)
+        entity.playerID = playerID
+        entity.weapon = nil
         add(entity.components, C_PlayerController:new())
         add(entity.components, C_VelocityController:new(true))
         add(entity.components, C_HealthSystem:new(100))
-        add(entity.renderComponents, C_SpriteRenderer:new(2))
+        add(entity.renderComponents, C_SpriteRenderer:new(playerID == 1 and 5 or 6))
+        add(Game.players, entity)
         return entity
     end
 }
+
+function spawnWeapon()
+    Game.weaponTimer -= 1
+    if(Game.weaponTimer <= 0) then
+        Game.weaponTimer = 300
+        local weaponID = 20 + flr(rnd(3.9))
+        WeaponDrop:new(weaponID)
+    end
+end
 
 function generateMap()
     local seed = rnd(100)
@@ -522,23 +637,49 @@ function mod(x, m)
     return x%m
 end
 
+function round(x)
+    if(x%1 >= 0.5) then
+        return ceil(x)
+    else
+        return flr(x)
+    end
+end
+
+function printList(list)
+    returnStr = "{"
+    for key, obj in pairs(list) do
+        returnStr = returnStr .. " " .. key .. " = "
+        --if(type(obj) == "table") then
+        --    returnStr = returnStr .. printList(obj) .. ", "
+        --else
+            returnStr = returnStr .. tostr(obj) .. ", "
+        --end
+    end
+    if(#returnStr > 1) then returnStr = sub(returnStr, 1, #returnStr - 2) .. " " end
+    return returnStr .. "}"
+end
+
 function _init()
     generateMap()
-    Game.player = Player:new(20,10)
+    Game.player = Player:new(20,10,1)
+    Game.player = Player:new(400,10,0)
 end
 
 function _update60()
     foreach(Game.objects, function(obj) obj:update(self) end)
+    spawnWeapon()
 end
 
 poke(0x5f36,1)
 function _draw()
+    --Redraw the whole map
     if(forceRedraw) then
         cls()
         redrawRegion(128 * stat(3), 0, 127, 127)
         line(0,128,128,128, 5)
         forceRedraw = stat(3)<3
         return forceRedraw
+    --Redraw parts of the screen
     else
         if #Map.redrawBuffer > 0 then
             palt(0, false)
@@ -554,6 +695,7 @@ function _draw()
                 Map.redrawBuffer = {}
             end
         end
+        --Draw entities
         foreach(Game.objects, function(obj) obj:draw(self) end)
         return stat(3)<3
     end
@@ -588,22 +730,22 @@ function camera(x,y)
 end
 
 __gfx__
-00e000000030000000000000000000000000000000000000000000000000000044f44444444ff44433533dd3dcdcccdc44445444444544440000000000000000
-0e0cc60003088e00000000000000000000000dd000000000000000000000000044f444444444f4443533533ddcccdcdc44454544444454440000000000000000
-000dcc000002880000000000000000000ee0d0dd00000000000000000000000044f444444444f4443d3db55dccdcdcdc44444494444444540000000000000000
-0a911dc00a9112e00000000003bbb0b0ee7e5000001110100000000002ddc00044ff4444444ff4445db5b3b3dcdcdccc54444f4444f464440000000000000000
-091cc61909188e190065d555bb333b5b2ee2d0dd01d9d5550000000000977966444ff444444f444453b33bb5dcdcccdc4f44444f444544450000000000000000
-091ccc1009188810065444000dbbb000d2250dd00d10c000a99a5900079559004444ff44444f444455bd3db5dcccdcdc44544444444445940000000000000000
-00dc1c000028180065000000d000000055500000d5000c00405000004440000044444fff444fffff353b3d35ccdcdcdc444444444444444f0000000000000000
-000c010000080100000000000000000000000000000000000000000000000000ff44444ff4ff4444db3b5d33dcdcdccc444444444444f4440000000000000000
-0000000000000000000000000000000000000dd00000000000000000000000004f444444fff44444000000000000000044444444445445440000000000000000
-000000000000000000000000000000bb0000d0000000015000000000000000604ff4444ffff44444000000000000000044445444444444440000000000000000
-000040000000f000000005000000bb500000d00d00000500000000000000060044fffff44ff44444000000000000000044464f44444544540000000000000000
-0a911dc00a9112e000005000000b3b0000ee5dd00001500000000000000c60004444f4444f444444000000000000000044f444f4444445440000000000000000
-091cc61909188e19000d400000b3b0000ee7e0000019dc000009009000d790004444f4444f444444000000000000000045444944544444440000000000000000
-091ccc100918881000640000003b000002ee200001dd00c000900a0002755000444ff4444f444444000000000000000044545444444444f40000000000000000
-00dc1c0000281800005000000bd000000022500001d1000009a590000094000044ff44444fff44440000000000000000444444454444f4440000000000000000
-000c0100000801000050000000d0000000d5000000d00000004040000040000044f4444444ff4444000000000000000044444454444445440000000000000000
+00e000000030000000000000000000000000000000000000000000000000000044f44444444ff44433533dd3dcdcccdc44445444444544445555555d55555555
+0e0cc60003088e00000000000000000000000dd000000000000000000000000044f444444444f4443533533ddcccdcdc4445454444445444555555d5d555ddd5
+000dcc000002880000000000000000000ee0d0dd00000000000000000000000044f444444444f4443d3db55dccdcdcdc44444494444444545555555555dd5555
+0a911dc00a9112e00000000003bbb0b0ee7e5000001110100000000002ddc00044ff4444444ff4445db5b3b3dcdcdccc54444f4444f4644455d5555ddd555555
+091cc61909188e190065d555bb333b5b2ee2d0dd01d9d5550000000000977966444ff444444f444453b33bb5dcdcccdc4f44444f444544455d55d55555555d55
+091ccc1009188810065444000dbbb000d2250dd00d10c000a99a5900079559004444ff44444f444455bd3db5dcccdcdc445444444444459455555d555555d555
+00dc1c000028180065000000d000000055500000d5000c00405000004440000044444fff444fffff353b3d35ccdcdcdc444444444444444f555555d555555d55
+000c010000080100000000000000000000000000000000000000000000000000ff44444ff4ff4444db3b5d33dcdcdccc444444444444f4445555d55d55555555
+0000000000000000000000000000000000000dd00000000000000000000000004f444444fff4444400000000000000004444444444544544555d5555555d555d
+000000000000000000000000000000bb0000d0000000015000000000000000604ff4444ffff4444400000000000000004444544444444444d555d5555dd555d5
+000040000000f000000005000000bb500000d00d00000500000000000000060044fffff44ff44444000000000000000044464f4444454454d555555dd5555555
+0a911dc00a9112e000005000000b3b0000ee5dd00001500000000000000c60004444f4444f444444000000000000000044f444f444444544d55555d555555555
+091cc61909188e19000d400000b3b0000ee7e0000019dc000009009000d790004444f4444f44444400000000000000004544494454444444555d5555555d5555
+091ccc100918881000640000003b000002ee200001dd00c000900a0002755000444ff4444f444444000000000000000044545444444444f45555d55555d55555
+00dc1c0000281800005000000bd000000022500001d1000009a590000094000044ff44444fff44440000000000000000444444454444f444555d555d55555d55
+000c0100000801000050000000d0000000d5000000d00000004040000040000044f4444444ff444400000000000000004444445444444544555555d5555555dd
 afafafaf6566556500000000000000000000000000000000000000000000000000000000000000000000000000000000d33333333333333b0000000000000000
 94949494d55d55d50000000000000000000200d00000000000000000000000000000000000000000000000000000000033b3333b3b33b3330000000000000000
 4f4f4f4f556555550009000000000000020ee60000000000000000000000000000000000000000000000000000000000bb3333b3b33bd3330000000000000000
@@ -620,7 +762,6 @@ f464f464165551650a900000000000000087ae000000000000000000000000000000000000000000
 06c100000e8200000000089a0000000000d8e020000000000000000000600000000000000000000000000000000000003a33b3b33933b3bb0000000000000000
 cc10000088200000000890a003000000000200600000000000000000000000000000000000000000000000000000000033333533b3b333330000000000000000
 c1000000820000000090a90000000000d000000000000000000000006000000000000000000000000000000000000000b333333b3b3333d30000000000000000
-
 __sfx__
 c20d0020155201552018030180301a0301a0301c010200102101021010230102303021020210302001020010210102101018510195101a5101a5101e0501e0401c0201c02019020190201a0201a0201752014520
 300d0000042200b4001c1000b400196001a100267001960025700186002870026700196000c4001530015300267000c4000b2100b210092100921026700186001b100002000423004210042001f1002670026700

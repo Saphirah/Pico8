@@ -23,3 +23,9 @@ vec2mt.__index=vec2mt
 function vec2(x,y)
     return setmetatable({x=x,y=y},vec2mt)
 end
+
+function distance(vec1, vec2)
+    local dx = (vec2.x - vec1.x) / 100
+    local dy = (vec2.y - vec1.y) / 100
+    return sqrt(dx * dx + dy * dy) * 100
+end
