@@ -10,7 +10,7 @@ poke(0x5f5c,99999)
 poke(0x5f5d,99999)
 
 Game = {
-    objects = {}
+    objects = {},
     pellets = {}
 }
 
@@ -20,12 +20,14 @@ Map = {
     mapData = {},
     heightMap = {},
     getMapData = function(self, x, y)
-        x = min(max(flr(x), 1), Map.screens.x*128)
-        y = min(max(flr(y), 1), Map.screens.y*128)
-        return Map.mapData[ceil(x/128)][y * 128 + (x % 128) + 1]
+        local dx = min(max(flr(x), 0), Map.screens.x*127)
+        local dy = min(max(flr(y), 0), Map.screens.y*127)
+        return Map.mapData[min(max(flr(x/128), 0), 3)][dy * 128 + (dx % 128)]
     end,
     getMapDataByScreen = function(self, x, y, screen)
-        return Map.mapData[screen+1][flr(y) * 128 + flr(x) + 1]
+        local dx = min(max(flr(x), 0), Map.screens.x*127)
+        local dy = min(max(flr(y), 0), Map.screens.y*127)
+        return Map.mapData[screen][flr(dy) * 128 + flr(dx)]
     end,
     redrawBuffer = {}
 }
@@ -61,6 +63,31 @@ Textures = {
     [10] = {
         position = vec2(16, 0),
         dimension = vec2(8, 8)
+    },
+    --LaserWeapon
+    [11] = {
+        position = vec2(24, 0),
+        dimension = vec2(8, 8)
+    },
+    --LaserBall
+    [12] = {
+        position = vec2(32, 0),
+        dimension = vec2(8, 8)
+    },
+    --AK
+    [13] = {
+        position = vec2(40, 0),
+        dimension = vec2(8, 8)
+    },
+    --Pistol
+    [14] = {
+        position = vec2(48, 0),
+        dimension = vec2(8, 8)
+    },
+    --Sniper
+    [15] = {
+        position = vec2(56, 0),
+        dimension = vec2(8, 8)
     }
 }
 
@@ -76,11 +103,11 @@ Explosion = {
         for dx = -radius, radius do
             for dy = -radius, radius do
                 if(dx*dx + dy*dy <= radius * radius) then
-                    screen = ceil((x + dx) / 128)
+                    screen = flr((x + dx) / 128)
                     if(y + dy > Map.waterHeight) then
-                        Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128 + 1))] = -1
+                        Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = -1
                     else
-                        Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128 + 1))] = 0
+                        Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = 0
                     end
                 end
             end
@@ -106,6 +133,41 @@ C_SpriteRenderer = {
                 if(stat(3) == 3) then
                     add(Map.redrawBuffer, { position = vec2(drawPos.x, drawPos.y), dimension = vec2(self.dim.x, self.dim.y)})
                 end
+            end
+        }
+    end
+}
+
+C_PixelRenderer = {
+    new = function(self, color)
+        return {
+            color = color,
+            draw = function(self, owner)
+                local posX = owner.transform.position.x - stat(3) * 128
+                if(posX >= 0 and posX < 128) then
+                    pset(posX, owner.transform.position.y, color)
+                end
+                if(stat(3) == 3) then
+                    add(Map.redrawBuffer, { position = vec2(owner.transform.position.x, owner.transform.position.y) })
+                end 
+            end
+        }
+    end
+}
+
+C_LineRenderer = {
+    new = function(self, color, width)
+        return {
+            color = color,
+            width = width,
+            draw = function(self, owner)
+                local posX = owner.transform.position.x - stat(3) * 128
+                if((posX >= 0 and posX < 128) or (posX + width >= 0 and posX + width < 128)) then
+                    line(posX, owner.transform.position.y, posX + self.width, owner.transform.position.y, self.color)
+                end
+                if(stat(3) == 3) then
+                    add(Map.redrawBuffer, { position = vec2(owner.transform.position.x, owner.transform.position.y), dimension = vec2(self.width, 0) })
+                end 
             end
         }
     end
@@ -213,40 +275,140 @@ C_PlayerController = {
     end
 }
 
-Weapon_GrenadeLauncher = {
-    new = function(self, parent)
+C_Lifetime = {
+    new = function(self, lifetime)
+        return {
+            lifetime = lifetime,
+            update = function(self, owner)
+                lifetime -= 1
+                if(lifetime <= 0) then
+                    owner:destroy()
+                end
+            end
+        }
+    end
+}
+
+--Component that controls a health value
+C_HealthSystem = {
+    new = function(self, maxHealth)
+        return {
+            health = maxHealth,
+            applyDamage = function(self, owner, amount)
+                self.health -= amount
+            end,
+            --Not optimal to check every frame but the easiest way
+            update = function(self, owner)
+                if(self.health <= 0) then
+                    owner:destroy()
+                end
+            end
+        }
+    end
+}
+
+Weapon = {
+    new = function(self, parent, spriteID)
         local me = Entity:new()
         me.parent = parent
-        add(me.renderComponents, C_SpriteRenderer:new(10))
+        add(me.renderComponents, C_SpriteRenderer:new(spriteID))
         me.update = function(self)
             self.transform.position = self.parent.transform.position + (self.parent.isFacingRight and 1 or -1) * vec2(4, 0)
             self.isFacingRight = self.parent.isFacingRight
+            self:isShooting()
+        end
+        me.isShooting = function(self)
             if(btnp(5,1)) then
                 self:shoot()
-            end
-        end
-        me.shoot = function(self)
-            self.parent.velocity.x = self.parent.isFacingRight and -10 or 10
-            for i = -5, 5 do
-                add(Game.pellets, { 
-                    position = vec2(self.transform.position.x, self.transform.position.x), 
-                    velocity = vec2(self.parent.isFacingRight and 5 or -5, i / 5),
-                    lifetime = 0
-                })
             end
         end
         return me
     end
 }
 
-Projectile_Pellet = {
-    new = function(self, x, y, velocityX, velocityY)
-        local me = Entity:new(x, y)
-        add(me.components, C_VelocityController:new(false))
-        me.velocity = vec2(velocityX, velocityY)
-        me.onHitGround = function(self)
-            me:destroy()
+Weapon_Shotgun = {
+    new = function(self, parent)
+        local me = Weapon:new(parent, 10)
+        me.shoot = function(self)
+            self.parent.velocity.x = self.parent.isFacingRight and -10 or 10
+            for i = -2, 2 do
+                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, i / 5, 7, 10, 2)
+            end
         end
+        return me
+    end
+}
+
+Weapon_AK = {
+    new = function(self, parent)
+        local me = Weapon:new(parent, 13)
+        me.cooldown = 2
+        me.shoot = function(self)
+            self.parent.velocity.x = self.parent.isFacingRight and -1 or 1
+            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, 0, 7, 50, 1)
+        end
+        me.isShooting = function(self)
+            if(self.cooldown > 0) then
+                self.cooldown -= 1
+            else
+                if(btn(5,1)) then
+                    self:shoot()
+                    self.cooldown = 2
+                end
+            end
+        end
+        return me
+    end
+}
+
+Weapon_LaserWeapon = {
+    new = function(self, parent)
+        local me = Weapon:new(parent, 11)
+        me.shoot = function(self)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 5 or -5, 0, 11, 5, 40, 0)
+        end
+        return me
+    end
+}
+
+Projectile = {
+    new = function(self, x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+        local me = Entity:new(x, y-4)
+        add(me.components, C_VelocityController:new(false))
+        add(me.components, C_Lifetime:new(lifetime))
+        me.velocity = vec2(velocityX, velocityY)
+        if(explosionRadius > 0) then
+            me.explosionRadius = explosionRadius
+            me.onHitGround = function(self)
+                Explosion:new(self.transform.position.x, self.transform.position.y, self.explosionRadius)
+                me:destroy()
+            end
+        else
+            me.onHitGround = function(self)
+                me:destroy()
+            end
+        end
+        me.destroy = function(self)
+            del(Game.objects, self)
+        end
+        return me
+    end
+}
+
+Projectile_Pellet = {
+    new = function(self, x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+        local me = Projectile:new(x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+        add(me.renderComponents, C_PixelRenderer:new(10))
+        return me
+    end
+}
+
+Projectile_Laser = {
+    new = function(self, x, y, velocityX, velocityY, color, width, lifetime, explosionRadius)
+        local me = Projectile:new(x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+        add(me.renderComponents, C_LineRenderer:new(color, width))
+        return me
+    end
 }
 
 Entity = {
@@ -259,17 +421,12 @@ Entity = {
             velocity = vec2(0, 0),
             components = {},
             renderComponents = {},
-            health = 100,
             isFacingRight = true,
             draw = function(self)
                 foreach(self.renderComponents, function(obj) obj:draw(self) end)
             end,
             update = function(self)
                 foreach(self.components, function(obj) obj:update(self) end)
-            end,
-            applyDamage = function(self, amount)
-                self.health -= amount
-                if(self.health<=0) then self:destroy() end
             end,
             destroy = function(self)
                 del(Game.objects, self)
@@ -288,9 +445,10 @@ Player = {
         entity.update = function(self)
             foreach(self.components, function(obj) obj:update(self) end)
         end
-        entity.weapon = Weapon_GrenadeLauncher:new(entity)
+        entity.weapon = Weapon_AK:new(entity)
         add(entity.components, C_PlayerController:new())
         add(entity.components, C_VelocityController:new(true))
+        add(entity.components, C_HealthSystem:new(100))
         add(entity.renderComponents, C_SpriteRenderer:new(2))
         return entity
     end
@@ -308,19 +466,19 @@ function generateMap()
                 if distance < 0 then
                     --Create Grass
                     if(distance > -8 + Simplex2D((x + screenX * 128), 99) * 5) then
-                        add(Map.mapData[screenX], 3)
+                        Map.mapData[screenX][x + y * 128] = 3
                     --Create Dirt
                     else
-                        add(Map.mapData[screenX], 1)
+                        Map.mapData[screenX][x + y * 128] = 1
                     end
                 --Above Ground
                 else
                     --Create Water
                     if(y > Map.waterHeight) then
-                        add(Map.mapData[screenX], -1)
+                        Map.mapData[screenX][x + y * 128] = -1
                     --Create Air
                     else
-                        add(Map.mapData[screenX], 0)
+                        Map.mapData[screenX][x + y * 128] = 0
                     end
                 end
             end
@@ -334,7 +492,6 @@ function redrawRegion(posX, posY, width, height)
     posX = flr(posX) - screen * 128
     posY = flr(posY)
     if((posX >= 0 and posX < 128) or (posX + width >= 0 and posX + width < 128)) then
-        palt(0, false)
         for x = max(posX,0), min(posX + width, 127) do
             for y = max(posY, 0), min(posY + height, 127) do
                 local pixel = Map:getMapDataByScreen(x, y, screen)
@@ -346,14 +503,16 @@ function redrawRegion(posX, posY, width, height)
                 end
             end
         end
-        palt(0, true)
     end
 end
 
 function redrawPixel(posX, posY)
+    local x = posX - stat(3) * 128
+    if(x < 0 or x >= 128) then return end
+
     local pixel = Map:getMapData(posX, posY)
     local color = sget(posX % Textures[pixel].dimension.x + Textures[pixel].position.x, posY % Textures[pixel].dimension.y + Textures[pixel].position.y)
-    pset(posX, posY, color)
+    pset(x, posY, color)
 end
 
 function mod(x, m)
@@ -361,12 +520,6 @@ function mod(x, m)
         x += m
     end
     return x%m
-end
-
-function updatePellets()
-    for pellet in all(Map.pellets) do
-        redrawPixel(pellet.transform.position.x, pellet.transform.position.y)
-    end
 end
 
 function _init()
@@ -388,15 +541,20 @@ function _draw()
         return forceRedraw
     else
         if #Map.redrawBuffer > 0 then
+            palt(0, false)
             for i in all(Map.redrawBuffer) do
-                redrawRegion(i.position.x, i.position.y, i.dimension.x, i.dimension.y)
+                if(i.dimension == nil) then
+                    redrawPixel(i.position.x, i.position.y)
+                else
+                    redrawRegion(i.position.x, i.position.y, i.dimension.x, i.dimension.y)
+                end
             end
+            palt(0, true)
             if(stat(3)==3) then
                 Map.redrawBuffer = {}
             end
         end
         foreach(Game.objects, function(obj) obj:draw(self) end)
-        updatePellets()
         return stat(3)<3
     end
 end
