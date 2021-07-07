@@ -77,7 +77,8 @@ Textures = {
     --AK
     [13] = {
         position = vec2(40, 0),
-        dimension = vec2(8, 8)
+        dimension = vec2(8, 8),
+        fissibubele = 42069
     },
     --Pistol
     [14] = {
