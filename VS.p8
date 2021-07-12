@@ -301,7 +301,7 @@ C_PlayerController = {
                 --Dig
                 if(btn(3, owner.playerID)) then 
                     owner.velocity.y = -2
-                    Explosion:new(owner.transform.position.x, owner.transform.position.y, 1)
+                    Explosion:new(owner.transform.position.x, owner.transform.position.y, 3)
                 end
 
                 --Jump
@@ -378,6 +378,12 @@ C_WeaponPickup = {
                             player.weapon = Weapon_Shotgun:new(player)
                         elseif(self.weaponID == 21) then
                             player.weapon = Weapon_LaserWeapon:new(player)
+                        elseif(self.weaponID == 22) then
+                            player.weapon = Weapon_LaunchWeapon:new(player)
+                        elseif(self.weaponID == 24) then
+                            player.weapon = Weapon_PistolWeapon:new(player)                                    
+                        elseif(self.weaponID == 25) then
+                            player.weapon = Weapon_SniperWeapon:new(player)
                         else
                             player.weapon = Weapon_AK:new(player)
                         end
@@ -412,10 +418,82 @@ Weapon = {
 Weapon_Shotgun = {
     new = function(self, parent)
         local me = Weapon:new(parent, 10)
+        me.cooldown = 45
         me.shoot = function(self)
+            sfx(8)
             self.parent.velocity.x = self.parent.isFacingRight and -10 or 10
             for i = -2, 2 do
-                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, i / 5, 7, 10, 2)
+                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, i / 5, 7, 10, 4)
+            end
+            
+        me.isShooting = function(self)
+            if(self.cooldown > 0) then
+                self.cooldown -= 1
+            else
+                if(btn(5, self.parent.playerID)) then
+                    self:shoot()
+                    self.cooldown = 45
+                end
+            end
+        end
+    end
+        return me
+    end
+}
+
+Weapon_LaserWeapon = {
+    new = function(self, parent)
+        local me = Weapon:new(parent, 11)
+        me.shoot = function(self)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 5 or -5, 0, 11, 5, 50, 0)
+            sfx(9)
+        end
+        return me
+    end
+}
+
+Weapon_LaunchWeapon = {
+    new = function(self, parent)
+        local me = Weapon:new(parent, 12)
+        me.cooldown = 60
+        me.shoot = function(self)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, 12, 6, 400, 8)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y-1, self.parent.isFacingRight and 1 or -1, 0, 14, 6, 400, 3)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y+1, self.parent.isFacingRight and 1 or -1, 0, 14, 6, 400, 3)
+            sfx(10)
+        end
+        
+        me.isShooting = function(self)
+            if(self.cooldown > 0) then
+                self.cooldown -= 1
+            else
+                if(btn(5, self.parent.playerID)) then
+                    self:shoot()
+                    self.cooldown = 60
+                end
+            end
+        end
+        return me
+    end
+}
+
+Weapon_PistolWeapon = {
+    new = function(self, parent)
+        local me = Weapon:new(parent, 14)
+        me.cooldown = 15
+        me.shoot = function(self)
+            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 2 or -2, 0, 10, 40, 5)
+            sfx(11)
+        end
+        
+        me.isShooting = function(self)
+            if(self.cooldown > 0) then
+                self.cooldown -= 1
+            else
+                if(btn(5, self.parent.playerID)) then
+                    self:shoot()
+                    self.cooldown = 15
+                end
             end
         end
         return me
@@ -425,10 +503,11 @@ Weapon_Shotgun = {
 Weapon_AK = {
     new = function(self, parent)
         local me = Weapon:new(parent, 13)
-        me.cooldown = 2
+        me.cooldown = 3
         me.shoot = function(self)
+            sfx(11)
             self.parent.velocity.x = self.parent.isFacingRight and -1 or 1
-            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(0.5) - 0.25, 7, 50, 1)
+            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(0.5) - 0.25, 7, 50, 3)
         end
         me.isShooting = function(self)
             if(self.cooldown > 0) then
@@ -436,7 +515,7 @@ Weapon_AK = {
             else
                 if(btn(5, self.parent.playerID)) then
                     self:shoot()
-                    self.cooldown = 2
+                    self.cooldown = 3
                 end
             end
         end
@@ -444,11 +523,24 @@ Weapon_AK = {
     end
 }
 
-Weapon_LaserWeapon = {
+Weapon_SniperWeapon = {
     new = function(self, parent)
-        local me = Weapon:new(parent, 11)
+        local me = Weapon:new(parent, 15)
+        me.cooldown = 50
         me.shoot = function(self)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 5 or -5, 0, 11, 5, 40, 0)
+            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 25 or -25, 0, 6, 30, 150, 4)
+            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 22 or -22, 0, 6, 30, 150, 4)
+        end
+        me.isShooting = function(self)
+            if(self.cooldown > 0) then
+                self.cooldown -= 1
+            else
+                if(btn(5, self.parent.playerID)) then
+                    self:shoot()
+                    self.cooldown = 50
+                    sfx(12)
+                end
+            end
         end
         return me
     end
@@ -487,6 +579,14 @@ Projectile_Pellet = {
 }
 
 Projectile_Laser = {
+    new = function(self, x, y, velocityX, velocityY, color, width, lifetime, explosionRadius)
+        local me = Projectile:new(x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+        add(me.renderComponents, C_LineRenderer:new(color, width))
+        return me
+    end
+}
+
+Projectile_Sniper = {
     new = function(self, x, y, velocityX, velocityY, color, width, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, color, lifetime, explosionRadius)
         add(me.renderComponents, C_LineRenderer:new(color, width))
@@ -565,7 +665,7 @@ function spawnWeapon()
     Game.weaponTimer -= 1
     if(Game.weaponTimer <= 0) then
         Game.weaponTimer = 300
-        local weaponID = 20 + flr(rnd(3.9))
+        local weaponID = 20 + flr(rnd(6))
         WeaponDrop:new(weaponID)
     end
 end
@@ -771,11 +871,11 @@ b60d00003040030400242503040023210232302342023410152202d400152402d4002c4002c40020
 b10d00000c650376001b6000c6000c6502f6001b600326000c6500c600076000b6000c65032600316000c6000c650376001b6001b6000c6502f6001b600326000c6503260007600016000c650006002b6000c620
 800d0000174001740017400174002d630144001440014400134002d61013400296002d6301240012400124000b4000b4002d6000b4002d6300b4000b4000b4000b4002d6100b4000b4002d6300e4001140013400
 000d00001013010130101300411010130101301013004110131301310010110101100b50014100141101412014120141201412014110141101411002500025000250001500191101911019100191001911019110
-010d00001013010130101300711010120101101011008110131301010010110101101010010100141101412014120141201412014110141102610019600000000d60010110121201212012110121001211012110
-00030000000401466004550106500d6400a64008640066300463003620036100161000510005100051000600006000b6000a6000960000600006000f03019630146100d610076100000000000256201161010100
-00010000056202f140200501a0401523013030117300f7300e7300c7300c0300c7300b7300b7300b0200b7200b0200b7100a0100a7100a0000b0000a0000a0000a0000a0000a0000a0000a0000a0000a00000000
+000d00001013010130101300711010120101101011008110131301010010110101101010010100141101412014120141201412014110141102610019600000000d60010110121201212012110121001211012110
+00030000000401466004550106500d6400a64008640066300463003620036100161000510005100051000600006000b6000a6000960000600006000f02019620146100d600076100000000000256101161010100
+00010000056202f140200501a0401523013030117300f7300e730132300c0300c730182500b730182500b740172400b730172300a720162201621014210132101321011210102100e2200c210092100721000210
 000400000d31009660043200b3100a640043100b6100f1301312018110036100004001040010400204002040030400404005030070300a0200b1200b2200b0300b2300b0300b0300b0300b0200b2100b0100b410
-00030000066500e630086200111000610000100870002700001000010000000004000040000000001000010000000001000010000100001000010000000000000000000000000000000000000000000000000000
+00030000146500e630086200111000610000100870002700001000010000000004000040000000001000010000000001000010000100001000010000000000000000000000000000000000000000000000000000
 0003000001440186600a420176501664015630146301363012620116200f6200c6200b62008620076200662005620036200362002620016200162000620006200062000620006200062000620006200061000610
 0001000006660074100a6200e13011110131201512016130171401814019130191201912019110191101911019110191101911019110181101910019100191001910019100191001910018100181001810018100
 __music__
