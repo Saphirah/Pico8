@@ -301,7 +301,7 @@ C_PlayerController = {
                 --Dig
                 if(btn(3, owner.playerID)) then 
                     owner.velocity.y = -2
-                    Explosion:new(owner.transform.position.x, owner.transform.position.y, 3)
+                    Explosion:new(owner.transform.position.x, owner.transform.position.y, 4)
                 end
 
                 --Jump
