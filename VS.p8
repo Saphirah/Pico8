@@ -13,6 +13,7 @@ Game = {
     objects = {},
     pellets = {},
     players = {},
+    flags = {},
     weaponTimer = 300
 }
 
@@ -31,11 +32,18 @@ Map = {
         local dy = min(max(flr(y), 0), Map.screens.y*127)
         return Map.mapData[screen][flr(dy) * 128 + flr(dx)]
     end,
-    setMapData = function(self, x, y, index)
+    setMapData = function(self, x, y, index, addToRedrawBuffer)
+        addToRedrawBuffer = addToRedrawBuffer or true
         local dx = min(max(flr(x), 0), Map.screens.x*127)
         local dy = min(max(flr(y), 0), Map.screens.y*127)
-        add(Map.redrawBuffer, { position = vec2(dx, dy) })
+        if(addToRedrawBuffer) then add(Map.redrawBuffer, { position = vec2(dx, dy) })
         Map.mapData[min(max(flr(dx/128), 0), 3)][dy * 128 + (dx % 128)] = index
+    end,
+    setMapDataByScreen = function(self, x, y, screen, index)
+        local dx = min(max(flr(x), 0), 127)
+        local dy = min(max(flr(y), 0), 127)
+        add(Map.redrawBuffer, { position = vec2(dx + screen * 128, dy) })
+        Map.mapData[screen][dy * 128 + (dx % 128)] = index
     end,
     redrawBuffer = {}
 }
@@ -75,6 +83,16 @@ Textures = {
     [6] = {
         position = vec2(8, 0),
         dimension = vec2(8, 8)
+    },
+    --Health Bar Player 1
+    [7] = {
+        position = vec2(80, 10),
+        dimension = vec2(8, 2)
+    },
+    --Health Bar Player 2
+    [8] = {
+        position = vec2(80, 8),
+        dimension = vec2(8, 2)
     },
     --Weapons
     --Shotgun
@@ -138,6 +156,16 @@ Textures = {
     [25] = {
         position = vec2(56, 8),
         dimension = vec2(8, 8)
+    },
+    --Blue Flag
+    [30] = {
+        position = vec2(64, 16),
+        dimension = vec2(8, 16)
+    },
+    --Red Flag
+    [31] = {
+        position = vec2(72, 16),
+        dimension = vec2(8, 16)
     }
 }
 
@@ -155,14 +183,16 @@ Explosion = {
                 if(dx*dx + dy*dy <= radius * radius) then
                     screen = flr((x + dx) / 128)
                     if(y + dy > Map.waterHeight) then
+                        --Map:setMapDataByScreen(x + dx, y + dy, screen, -1)
                         Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = -1
                     else
+                        --Map:setMapDataByScreen(x + dx, y + dy, screen, 0)
                         Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = 0
                     end
                 end
             end
         end
-        add(Map.redrawBuffer, { position = vec2(x - radius - 1, y - radius - 1), dimension = vec2(radius * 2 + 2, radius * 2 + 2)})
+        --add(Map.redrawBuffer, { position = vec2(x - radius - 1, y - radius - 1), dimension = vec2(radius * 2 + 2, radius * 2 + 2)})
     end
 }
 
@@ -199,7 +229,7 @@ C_PixelRenderer = {
                 end
                 if(stat(3) == 3) then
                     add(Map.redrawBuffer, { position = vec2(owner.transform.position.x, owner.transform.position.y) })
-                end 
+                end
             end
         }
     end
@@ -224,15 +254,16 @@ C_LineRenderer = {
 }
 
 C_VelocityController = {
-    new = function(self, takeSteps)
-        takeSteps = takeSteps or false
+    new = function(self, takeSteps, simulationSteps)
         return{
+            takeSteps = takeSteps or false,
+            simulationSteps = simulationSteps or 3,
             update = function(self, owner)
                 --Handle Y Velocity
-                local velocityDir = vec2(owner.velocity.x / abs(owner.velocity.x), owner.velocity.y / abs(owner.velocity.y))
+                local velocityDir = self.simulationSteps * vec2(owner.velocity.x / abs(owner.velocity.x), owner.velocity.y / abs(owner.velocity.y))
                 local velocity = vec2(owner.velocity.x, owner.velocity.y)
                 local hitGround = false
-                if(abs(owner.velocity.y) > 0) then
+                if(owner.velocity.y ~= 0) then
                     while(velocity.y * velocityDir.y > 0) do
                         --Fall down
                         if(Map:getMapData(owner.transform.position.x, owner.transform.position.y - velocityDir.y) <= 0) then
@@ -248,17 +279,23 @@ C_VelocityController = {
                 end
 
                 --Handle X Velocity
-                if(abs(owner.velocity.x) > 0) then
+                if(owner.velocity.x ~= 0) then
                     while(velocity.x * velocityDir.x > 0) do
                         --Move left/right
                         if(Map:getMapData(owner.transform.position.x + velocityDir.x, owner.transform.position.y) <= 0) then
                             owner.transform.position.x += velocityDir.x * min(1, abs(velocity.x))
                             velocity.x -= velocityDir.x
                         --Take steps
-                        elseif(takeSteps and (Map:getMapData(owner.transform.position.x + velocityDir.x, owner.transform.position.y-1) <= 0 or Map:getMapData(owner.transform.position.x + velocityDir.x, owner.transform.position.y-2) <= 0)) then
-                            owner.transform.position.x += velocityDir.x * min(1, abs(velocity.x))
-                            owner.transform.position.y -= 1
-                            velocity.x -= velocityDir.x
+                        elseif(takeSteps) then
+                            if((Map:getMapData(owner.transform.position.x + velocityDir.x, owner.transform.position.y-1) <= 0 or Map:getMapData(owner.transform.position.x + velocityDir.x, owner.transform.position.y-2) <= 0)) then
+                                owner.transform.position.x += velocityDir.x * min(1, abs(velocity.x))
+                                owner.transform.position.y -= 1
+                                velocity.x -= velocityDir.x
+                            else
+                                owner.velocity.x = 0
+                                hitGround = true
+                                break
+                            end
                         --Hit Wall
                         else
                             owner.velocity.x = 0
@@ -275,54 +312,68 @@ C_VelocityController = {
     end
 }
 
+C_VelocityController_NoCollision = {
+    new = function(self)
+        return{
+            update = function(self, owner)
+                owner.transform.position += vec2(owner.velocity.x, -owner.velocity.y)
+            end
+        }
+    end
+}
+
 --Component that controls the player movement
 C_PlayerController = {
     new = function(self, playerID)
         return {
             stairDirection = 0,
             stairPosition = {},
+            stairStartHeight = 0,
             stairDuration = 20,
+            playerID = playerID == 1 and 1 or 0,
             update = function(self, owner)
                 owner.velocity.x *= 0.75
                 owner.velocity.y -= 0.1
-
                 --Go Right
-                if(btn(1, owner.playerID)) then
+                if(btn(1, self.playerID)) then
                     owner.velocity.x += 0.4
                     owner.isFacingRight = true
                 end
 
                 --Go Left
-                if(btn(0, owner.playerID)) then 
+                if(btn(0, self.playerID)) then 
                     owner.velocity.x += -0.4
                     owner.isFacingRight = false
                 end
 
                 --Dig
-                if(btn(3, owner.playerID)) then 
+                if(btn(3, self.playerID)) then 
                     owner.velocity.y = -2
                     Explosion:new(owner.transform.position.x, owner.transform.position.y, 4)
                 end
 
                 --Jump
-                if(btn(4, owner.playerID)) then 
+                if(btn(4, self.playerID)) then 
                     if(Map:getMapData(owner.transform.position.x, owner.transform.position.y + 1) > 0) then
                         owner.velocity.y = 2
                     end
                 end
 
                 --Build
-                if(btnp(2, owner.playerID)) then
+                if(btnp(2, self.playerID)) then
                     self.stairDirection = owner.isFacingRight 
                     self.stairPosition = vec2(owner.transform.position.x, owner.transform.position.y)
                     self.stairDuration = 20
+                    self.stairStartHeight = owner.transform.position.y
                 end
-                if(btn(2, owner.playerID) and self.stairDuration > 0) then 
+                if(btn(2, self.playerID) and self.stairDuration > 0) then
+                    for x = self.stairPosition.y, self.stairStartHeight do
+                        Map:setMapData(self.stairPosition.x, self.stairPosition.y, 2, false)
+                    end
+                    add(Map.redrawBuffer, { position = vec2(dx, dy) })
                     self.stairPosition.x += self.stairDirection and 1 or -1
                     self.stairPosition.y -= 1
                     self.stairDuration -= 1
-                    Map:setMapData(self.stairPosition.x, self.stairPosition.y, 2)
-                    Map:setMapData(self.stairPosition.x, self.stairPosition.y+1, 2)
                 end
             end
         }
@@ -345,11 +396,44 @@ C_Lifetime = {
 
 --Component that controls a health value
 C_HealthSystem = {
-    new = function(self, maxHealth)
+    new = function(self, owner, maxHealth)
         return {
             health = maxHealth,
-            applyDamage = function(self, owner, amount)
-                self.health -= amount
+            maxHealth = maxHealth,
+            owner = owner,
+            applyDamage = function(self, amount)
+                printh("Apply Damage")
+                if(amount == 0) then return end
+                
+                self.health = min(max(self.health - amount, 0) ,maxHealth)
+
+                if(self.owner.playerID == 1) then
+                    if(amount < 0) then
+                        for x = self.health - amount, self.health do
+                            Map:setMapData(x, 0, 7)
+                            Map:setMapData(x, 1, 7)
+                        end
+                    else
+                        for x = self.health, self.health + amount do
+                            Map:setMapData(x, 0, 0)
+                            Map:setMapData(x, 1, 0)
+                        end
+                    end
+                else
+                    if(amount < 0) then
+                        for x = self.health - amount, self.health do
+                            Map:setMapData(512 - x, 0, 8)
+                            Map:setMapData(512 - x, 1, 8)
+                        end
+                    else
+                        for x = self.health, self.health + amount do
+                            Map:setMapData(512 - x, 0, 0)
+                            Map:setMapData(512 - x, 1, 0)
+                        end
+                    end
+                end
+
+                printh("Health: "..self.health..", PlayerID: "..owner.playerID)
             end,
             --Not optimal to check every frame but the easiest way
             update = function(self, owner)
@@ -369,7 +453,6 @@ C_WeaponPickup = {
             weaponID = weaponID,
             update = function(self, owner)
                 for player in all(Game.players) do
-                    --Cheap distance check to all players
                     if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
                         if(not (player.weapon == nil)) then player.weapon:destroy() end
                         owner:destroy()
@@ -387,8 +470,48 @@ C_WeaponPickup = {
                         else
                             player.weapon = Weapon_AK:new(player)
                         end
-                        --printh("Picked Up Weapon: "..distance(player.transform.position, owner.transform.position)..", PlayerPosition: "..player.transform.position.x.."/"..player.transform.position.y..", WeaponPosition: "..owner.transform.position.x.."/"..owner.transform.position.y)
                         return
+                    end
+                end
+            end
+        }
+    end
+}
+
+C_FlagPickup = {
+    new = function(self)
+        return {
+            pickUpDistance = 5,
+            update = function(self, owner)
+                local player = Game.players[owner.flagID == 30 and 2 else 1]
+                if(player == nil) then return end
+                if(player.flag ~= nil) then return end
+                if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
+                    player.flag = owner
+                    owner.playerFollow = {
+                        player = player,
+                        update = function(self, owner)
+                            owner.transform.position = self.player.transform.position + (self.player.isFacingRight and 1 or -1) * vec2(-4, 0)
+                            owner.isFacingRight = self.player.isFacingRight
+                        end
+                    }
+                end
+            end
+        }
+    end
+}
+
+C_Damage = {
+    new = function(self, damageAmount)
+        return {
+            damageAmount = damageAmount,
+            update = function(self, owner)
+                local enemyPlayer = Game.players[owner.playerID == 1 and 2 or 1]
+                if(enemyPlayer ~= nil) then
+                    --printh(distance(enemyPlayer.transform.position + vec2(0, -4), owner.transform.position))
+                    if(distance(enemyPlayer.transform.position + vec2(0, -4), owner.transform.position) < 5) then
+                        enemyPlayer.healthSystem:applyDamage(self.damageAmount)
+                        owner:destroy()
                     end
                 end
             end
@@ -407,7 +530,7 @@ Weapon = {
             self:isShooting()
         end
         me.isShooting = function(self)
-            if(btnp(5, self.parent.playerID)) then
+            if(btnp(5, self.parent.playerID == 1 and 1 or 0)) then
                 self:shoot()
             end
         end
@@ -423,14 +546,14 @@ Weapon_Shotgun = {
             sfx(8)
             self.parent.velocity.x = self.parent.isFacingRight and -10 or 10
             for i = -2, 2 do
-                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, i / 5, 7, 10, 4)
+                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, i / 5, self.parent.playerID, 10, 7, 10, 4)
             end
             
         me.isShooting = function(self)
             if(self.cooldown > 0) then
                 self.cooldown -= 1
             else
-                if(btn(5, self.parent.playerID)) then
+                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
                     self:shoot()
                     self.cooldown = 45
                 end
@@ -445,7 +568,7 @@ Weapon_LaserWeapon = {
     new = function(self, parent)
         local me = Weapon:new(parent, 11)
         me.shoot = function(self)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 5 or -5, 0, 11, 5, 50, 0)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 5 or -5, 0, self.parent.playerID, 10, 11, 5, 50, 0)
             sfx(9)
         end
         return me
@@ -457,9 +580,9 @@ Weapon_LaunchWeapon = {
         local me = Weapon:new(parent, 12)
         me.cooldown = 60
         me.shoot = function(self)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, 12, 6, 400, 8)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y-1, self.parent.isFacingRight and 1 or -1, 0, 14, 6, 400, 3)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y+1, self.parent.isFacingRight and 1 or -1, 0, 14, 6, 400, 3)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 10, 12, 6, 400, 8)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y-1, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 5, 14, 6, 400, 3)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y+1, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 5, 14, 6, 400, 3)
             sfx(10)
         end
         
@@ -467,7 +590,7 @@ Weapon_LaunchWeapon = {
             if(self.cooldown > 0) then
                 self.cooldown -= 1
             else
-                if(btn(5, self.parent.playerID)) then
+                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
                     self:shoot()
                     self.cooldown = 60
                 end
@@ -482,7 +605,7 @@ Weapon_PistolWeapon = {
         local me = Weapon:new(parent, 14)
         me.cooldown = 15
         me.shoot = function(self)
-            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 2 or -2, 0, 10, 40, 5)
+            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 2 or -2, 0, self.parent.playerID, 5, 10, 40, 5)
             sfx(11)
         end
         
@@ -490,7 +613,7 @@ Weapon_PistolWeapon = {
             if(self.cooldown > 0) then
                 self.cooldown -= 1
             else
-                if(btn(5, self.parent.playerID)) then
+                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
                     self:shoot()
                     self.cooldown = 15
                 end
@@ -507,13 +630,13 @@ Weapon_AK = {
         me.shoot = function(self)
             sfx(11)
             self.parent.velocity.x = self.parent.isFacingRight and -1 or 1
-            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(0.5) - 0.25, 7, 50, 3)
+            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(0.5) - 0.25, self.parent.playerID, 3, 7, 50, 3)
         end
         me.isShooting = function(self)
             if(self.cooldown > 0) then
                 self.cooldown -= 1
             else
-                if(btn(5, self.parent.playerID)) then
+                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
                     self:shoot()
                     self.cooldown = 3
                 end
@@ -528,14 +651,14 @@ Weapon_SniperWeapon = {
         local me = Weapon:new(parent, 15)
         me.cooldown = 50
         me.shoot = function(self)
-            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 25 or -25, 0, 6, 30, 150, 4)
-            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 22 or -22, 0, 6, 30, 150, 4)
+            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 25 or -25, 0, self.parent.playerID, 20, 6, 30, 30, 4)
+            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 22 or -22, 0, self.parent.playerID, 5, 6, 30, 30, 4)
         end
         me.isShooting = function(self)
             if(self.cooldown > 0) then
                 self.cooldown -= 1
             else
-                if(btn(5, self.parent.playerID)) then
+                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
                     self:shoot()
                     self.cooldown = 50
                     sfx(12)
@@ -547,11 +670,13 @@ Weapon_SniperWeapon = {
 }
 
 Projectile = {
-    new = function(self, x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         local me = Entity:new(x, y-4)
         add(me.components, C_VelocityController:new(false))
         add(me.components, C_Lifetime:new(lifetime))
+        add(me.components, C_Damage:new(damage))
         me.velocity = vec2(velocityX, velocityY)
+        me.playerID = playerID
         if(explosionRadius > 0) then
             me.explosionRadius = explosionRadius
             me.onHitGround = function(self)
@@ -571,24 +696,24 @@ Projectile = {
 }
 
 Projectile_Pellet = {
-    new = function(self, x, y, velocityX, velocityY, color, lifetime, explosionRadius)
-        local me = Projectile:new(x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
+        local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_PixelRenderer:new(10))
         return me
     end
 }
 
 Projectile_Laser = {
-    new = function(self, x, y, velocityX, velocityY, color, width, lifetime, explosionRadius)
-        local me = Projectile:new(x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
+        local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_LineRenderer:new(color, width))
         return me
     end
 }
 
 Projectile_Sniper = {
-    new = function(self, x, y, velocityX, velocityY, color, width, lifetime, explosionRadius)
-        local me = Projectile:new(x, y, velocityX, velocityY, color, lifetime, explosionRadius)
+    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
+        local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_LineRenderer:new(color, width))
         return me
     end
@@ -613,6 +738,46 @@ WeaponDrop = {
         add(me.components, C_VelocityController:new(true))
         add(me.renderComponents, C_SpriteRenderer:new(weaponID))
         return me
+    end
+}
+
+FlagPickup = {
+    new = function(self, flagID)
+        local me = Entity:new(flagID == 30 and 20 or 490, 0)
+        me.flagID = flagID
+        me.playerFollow = nil
+        me.onHitGround = function(self)
+            self.velocity.y = 0.3
+        end
+        add(me.components, C_FlagPickup:new(flagID))
+        add(me.components, {
+            update = function(self, owner)
+                owner.velocity.y -= 0.01
+            end
+        })
+        add(me.components, C_VelocityController:new(true))
+        add(me.renderComponents, C_SpriteRenderer:new(flagID))
+        add(Game.flags, me)
+        return me
+    end
+}
+
+Flag
+
+Blood = {
+    new = function(self, x, y)
+        local me = Entity:new(x, y)
+        add(me.renderComponents, C_PixelRenderer:new(8))
+        me.velocity = vec2(rnd(2)-1, rnd(3))
+        me.lifetime = 120
+        me.update = function(self)
+            self.velocity -= vec2(0, 0.1)
+            self.transform.position += vec2(self.velocity.x, -self.velocity.y)
+            self.lifetime -= 1
+            if(self.lifetime <= 0) then
+                self:destroy()
+            end
+        end
     end
 }
 
@@ -645,21 +810,69 @@ Entity = {
 }
 
 Player = {
+    playerID = 0,
     new = function(self, x, y, playerID)
+
         local entity = Entity:new(x, y)
         entity.update = function(self)
             foreach(self.components, function(obj) obj:update(self) end)
         end
-        entity.playerID = playerID
+        entity.destroy = function(self)
+            --Destroy Weapon
+            if(self.weapon ~= nil) then
+                self.weapon:destroy()
+            end
+
+            --Blood Splatter
+            for x = 0, 30 do
+                Blood:new(self.transform.position.x, self.transform.position.y)
+            end
+            --Respawn Player
+            PlayerRespawner:new(self.spawnPoint.x, self.spawnPoint.y, self.playerID)
+
+            --Remove Player from lists
+            del(Game.players, self)
+            del(Game.objects, self)
+        end
+
+        if(playerID == nil) then
+            self.playerID += 1
+            entity.playerID = self.playerID
+        else
+            entity.playerID = playerID
+        end
+
+        entity.spawnPoint = vec2(x,y)
         entity.weapon = nil
-        add(entity.components, C_PlayerController:new())
-        add(entity.components, C_VelocityController:new(true))
-        add(entity.components, C_HealthSystem:new(100))
-        add(entity.renderComponents, C_SpriteRenderer:new(playerID == 1 and 5 or 6))
+        entity.flag = nil
+        entity.healthSystem = C_HealthSystem:new(entity, 50)
+
+        add(entity.components, C_PlayerController:new(entity.playerID))
+        add(entity.components, C_VelocityController:new(true, 1))
+        add(entity.components, entity.healthSystem)
+        add(entity.renderComponents, C_SpriteRenderer:new(entity.playerID == 1 and 5 or 6))
         add(Game.players, entity)
         return entity
     end
 }
+
+PlayerRespawner = {
+    new = function(self, x, y, playerID)
+        local me = Entity:new(x, y)
+        me.playerID = playerID
+        me.respawnTimer = 300
+        me.update = function(self)
+            self.respawnTimer -= 1
+            if(self.respawnTimer <= 0) then
+                Player:new(x, y, playerID)
+                foreach(Game.players, function(obj) obj.healthSystem.health = obj.healthSystem.maxHealth end)
+                createHealthBar()
+                self:destroy()
+            end
+        end
+    end
+}
+
 
 function spawnWeapon()
     Game.weaponTimer -= 1
@@ -724,11 +937,26 @@ end
 
 function redrawPixel(posX, posY)
     local x = posX - stat(3) * 128
-    if(x < 0 or x >= 128) then return end
+    if(x < 0 or x >= 128) then return false end
 
     local pixel = Map:getMapData(posX, posY)
     local color = sget(posX % Textures[pixel].dimension.x + Textures[pixel].position.x, posY % Textures[pixel].dimension.y + Textures[pixel].position.y)
     pset(x, posY, color)
+    return true
+end
+
+function drawPixel(posX, posY, index)
+    local x = posX - stat(3) * 128
+    if(x < 0 or x >= 128) then return false end
+
+    local color = sget(posX % Textures[index].dimension.x + Textures[index].position.x, posY % Textures[index].dimension.y + Textures[index].position.y)
+    pset(x, posY, color)
+    return true
+end
+
+function setAndDrawPixel(posX, posY, index)
+    Map:setMapData(posX, posY, index)
+    redrawPixel(posX, posY)
 end
 
 function mod(x, m)
@@ -762,8 +990,9 @@ end
 
 function _init()
     generateMap()
-    Game.player = Player:new(20,10,1)
-    Game.player = Player:new(400,10,0)
+    Player:new(20,20)
+    Player:new(490,20)
+    createHealthBar()
 end
 
 function _update60()
@@ -771,30 +1000,50 @@ function _update60()
     spawnWeapon()
 end
 
+--Draws the health bar for both players
+function createHealthBar()
+    for x = 0, 50 do
+        Map:setMapData(x, 0, 7)
+        Map:setMapData(x, 1, 7)
+        Map:setMapData(512-x, 0, 8)
+        Map:setMapData(512-x, 1, 8)
+    end
+end
+
+--Redraws the entire screen
+function redrawScreen()
+    cls()
+    redrawRegion(128 * stat(3), 0, 127, 127)
+    line(0,128,128,128, 5)
+    forceRedraw = stat(3)<3
+    return forceRedraw
+end
+
+--Redraw the buffer (pixels/areas that need to be redrawn)
+function redrawBuffer()
+    palt(0, false)
+    for i in all(Map.redrawBuffer) do
+        if(i.dimension == nil) then
+            redrawPixel(i.position.x, i.position.y)
+        else
+            redrawRegion(i.position.x, i.position.y, i.dimension.x, i.dimension.y)
+        end
+    end
+    palt(0, true)
+    if(stat(3)==3) then
+        Map.redrawBuffer = {}
+    end
+end
+
 poke(0x5f36,1)
 function _draw()
     --Redraw the whole map
     if(forceRedraw) then
-        cls()
-        redrawRegion(128 * stat(3), 0, 127, 127)
-        line(0,128,128,128, 5)
-        forceRedraw = stat(3)<3
-        return forceRedraw
+        return redrawScreen()
     --Redraw parts of the screen
     else
         if #Map.redrawBuffer > 0 then
-            palt(0, false)
-            for i in all(Map.redrawBuffer) do
-                if(i.dimension == nil) then
-                    redrawPixel(i.position.x, i.position.y)
-                else
-                    redrawRegion(i.position.x, i.position.y, i.dimension.x, i.dimension.y)
-                end
-            end
-            palt(0, true)
-            if(stat(3)==3) then
-                Map.redrawBuffer = {}
-            end
+            redrawBuffer()
         end
         --Draw entities
         foreach(Game.objects, function(obj) obj:draw(self) end)
@@ -839,30 +1088,30 @@ __gfx__
 091ccc1009188810065444000dbbb000d2250dd00d10c000a99a5900079559004444ff44444f444455bd3db5dcccdcdc445444444444459455555d555555d555
 00dc1c000028180065000000d000000055500000d5000c00405000004440000044444fff444fffff353b3d35ccdcdcdc444444444444444f555555d555555d55
 000c010000080100000000000000000000000000000000000000000000000000ff44444ff4ff4444db3b5d33dcdcdccc444444444444f4445555d55d55555555
-0000000000000000000000000000000000000dd00000000000000000000000004f444444fff4444400000000000000004444444444544544555d5555555d555d
-000000000000000000000000000000bb0000d0000000015000000000000000604ff4444ffff4444400000000000000004444544444444444d555d5555dd555d5
-000040000000f000000005000000bb500000d00d00000500000000000000060044fffff44ff44444000000000000000044464f4444454454d555555dd5555555
-0a911dc00a9112e000005000000b3b0000ee5dd00001500000000000000c60004444f4444f444444000000000000000044f444f444444544d55555d555555555
+0000000000000000000000000000000000000dd00000000000000000000000004f444444fff44444e882e882000000004444444444544544555d5555555d555d
+000000000000000000000000000000bb0000d0000000015000000000000000604ff4444ffff4444482e882e8000000004444544444444444d555d5555dd555d5
+000040000000f000000005000000bb500000d00d00000500000000000000060044fffff44ff44444cdd1cdd10000000044464f4444454454d555555dd5555555
+0a911dc00a9112e000005000000b3b0000ee5dd00001500000000000000c60004444f4444f444444d1cdd1cd0000000044f444f444444544d55555d555555555
 091cc61909188e19000d400000b3b0000ee7e0000019dc000009009000d790004444f4444f44444400000000000000004544494454444444555d5555555d5555
 091ccc100918881000640000003b000002ee200001dd00c000900a0002755000444ff4444f444444000000000000000044545444444444f45555d55555d55555
 00dc1c0000281800005000000bd000000022500001d1000009a590000094000044ff44444fff44440000000000000000444444454444f444555d555d55555d55
 000c0100000801000050000000d0000000d5000000d00000004040000040000044f4444444ff444400000000000000004444445444444544555555d5555555dd
-afafafaf6566556500000000000000000000000000000000000000000000000000000000000000000000000000000000d33333333333333b0000000000000000
-94949494d55d55d50000000000000000000200d00000000000000000000000000000000000000000000000000000000033b3333b3b33b3330000000000000000
-4f4f4f4f556555550009000000000000020ee60000000000000000000000000000000000000000000000000000000000bb3333b3b33bd3330000000000000000
-f464f464165551650a900000000000000087ae00000000000000000000000000000000000000000000000000000000003533a3333333333a0000000000000000
-545454545d5555d57f990000303bb60002ea78200000001c0000a00a606709ff00000000000000000000000000000000333333d3335333330000000000000000
-464f464fd55455550a90000000000000006ee00000000000000000000000000000000000000000000000000000000000333b3b33333393330000000000000000
-454545455451d54d00000000000000000d0020000000000000000000000000000000000000000000000000000000000033bdb3333333333b0000000000000000
-141414145555555500000000000000000000000000000000000000000000000000000000000000000000000000000000533333b3b3b333b30000000000000000
-0000006c000000e800909a00000000000000000200000000000000000000000f0000000000000000000000000000000039333b3b3b5333350000000000000000
-00000cc1000008820000489000000000060020000000000000000000000000f0000000000000000000000000000000003333b533333333330000000000000000
-00006c100000e8200008009a0000060000ce8d00000000000000000000000900000000000000000000000000000000003333d335333d33330000000000000000
-0006c100000e8200000008990000b00002ea7820000000000000000000000000000000000000000000000000000000003b333333335333330000000000000000
-00cc100000882000000040a90003000000879e0000000000000000000007000000000000000000000000000000000000b3333b3b33333b330000000000000000
-06c100000e8200000000089a0000000000d8e020000000000000000000600000000000000000000000000000000000003a33b3b33933b3bb0000000000000000
-cc10000088200000000890a003000000000200600000000000000000000000000000000000000000000000000000000033333533b3b333330000000000000000
-c1000000820000000090a90000000000d000000000000000000000006000000000000000000000000000000000000000b333333b3b3333d30000000000000000
+afafafaf6566556500000000000000000000000000000000000000000000000051100000522000000000000000000000d33333333333333b0000000000000000
+94949494d55d55d50000000000000000000200d00000000000000000000000005dd110005ee22000000000000000000033b3333b3b33b3330000000000000000
+4f4f4f4f556555550009000000000000020ee6000000000000000000000000005ccdd110588ee2200000000000000000bb3333b3b33bd3330000000000000000
+f464f464165551650a900000000000000087ae000000000000000000000000005ccccdd158888ee200000000000000003533a3333333333a0000000000000000
+545454545d5555d57f990000303bb60002ea78200000001c0000a00a606709ff5ccdd110588ee2200000000000000000333333d3335333330000000000000000
+464f464fd55455550a90000000000000006ee0000000000000000000000000005dd110005ee220000000000000000000333b3b33333393330000000000000000
+454545455451d54d00000000000000000d0020000000000000000000000000005110000052200000000000000000000033bdb3333333333b0000000000000000
+141414145555555500000000000000000000000000000000000000000000000050000000500000000000000000000000533333b3b3b333b30000000000000000
+0000006c000000e800909a00000000000000000200000000000000000000000f5000000050000000000000000000000039333b3b3b5333350000000000000000
+00000cc1000008820000489000000000060020000000000000000000000000f0500000005000000000000000000000003333b533333333330000000000000000
+00006c100000e8200008009a0000060000ce8d00000000000000000000000900d0000000e000000000000000000000003333d335333d33330000000000000000
+0006c100000e8200000008990000b00002ea7820000000000000000000000000d0000000e000000000000000000000003b333333335333330000000000000000
+00cc100000882000000040a90003000000879e00000000000000000000070000d0000000e00000000000000000000000b3333b3b33333b330000000000000000
+06c100000e8200000000089a0000000000d8e020000000000000000000600000d0000000e000000000000000000000003a33b3b33933b3bb0000000000000000
+cc10000088200000000890a00300000000020060000000000000000000000000d0000000e0000000000000000000000033333533b3b333330000000000000000
+c1000000820000000090a90000000000d0000000000000000000000060000000d0000000e00000000000000000000000b333333b3b3333d30000000000000000
 __sfx__
 c20d0020155201552018030180301a0301a0301c010200102101021010230102303021020210302001020010210102101018510195101a5101a5101e0501e0401c0201c02019020190201a0201a0201752014520
 300d0000042200b4001c1000b400196001a100267001960025700186002870026700196000c4001530015300267000c4000b2100b210092100921026700186001b100002000423004210042001f1002670026700
