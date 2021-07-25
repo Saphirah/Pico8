@@ -19,7 +19,8 @@ Game = {
 
 Map = {
     screens = vec2(4, 1),
-    waterHeight = 90,
+    groundHeight = 90,
+    waterHeight = 100,
     mapData = {},
     heightMap = {},
     getMapData = function(self, x, y)
@@ -36,7 +37,7 @@ Map = {
         addToRedrawBuffer = addToRedrawBuffer or true
         local dx = min(max(flr(x), 0), Map.screens.x*127)
         local dy = min(max(flr(y), 0), Map.screens.y*127)
-        if(addToRedrawBuffer) then add(Map.redrawBuffer, { position = vec2(dx, dy) })
+        if(addToRedrawBuffer) then add(Map.redrawBuffer, { position = vec2(dx, dy) }) end
         Map.mapData[min(max(flr(dx/128), 0), 3)][dy * 128 + (dx % 128)] = index
     end,
     setMapDataByScreen = function(self, x, y, screen, index)
@@ -74,6 +75,11 @@ Textures = {
         position = vec2(96, 16),
         dimension = vec2(16, 16)
     },
+    --Wood
+    [4] = {
+        position = vec2(112, 16),
+        dimension = vec2(16, 16)
+    },
     --Player 1
     [5] = {
         position = vec2(0, 0),
@@ -97,65 +103,64 @@ Textures = {
     --Weapons
     --Shotgun
     [10] = {
-        position = vec2(16, 0),
-        dimension = vec2(8, 8)
+        position = vec2(16, 4),
+        dimension = vec2(8, 3)
     },
     --LaserWeapon
     [11] = {
-        position = vec2(24, 0),
-        dimension = vec2(8, 8)
+        position = vec2(24, 3),
+        dimension = vec2(8, 4)
     },
     --LaserBall
     [12] = {
-        position = vec2(32, 0),
-        dimension = vec2(8, 8)
+        position = vec2(32, 1),
+        dimension = vec2(8, 6)
     },
     --AK
     [13] = {
-        position = vec2(40, 0),
-        dimension = vec2(8, 8),
-        fissibubele = 42069
+        position = vec2(40, 3),
+        dimension = vec2(8, 4)
     },
     --Pistol
     [14] = {
-        position = vec2(48, 0),
-        dimension = vec2(8, 8)
+        position = vec2(48, 5),
+        dimension = vec2(6, 2)
     },
     --Sniper
     [15] = {
-        position = vec2(56, 0),
-        dimension = vec2(8, 8)
+        position = vec2(56, 3),
+        dimension = vec2(8, 4)
     },
     --WeaponDrops
     --Shotgun
     [20] = {
-        position = vec2(16, 8),
-        dimension = vec2(8, 8)
+        position = vec2(18, 10),
+        dimension = vec2(4, 6)
     },
     --LaserWeapon
     [21] = {
-        position = vec2(24, 8),
-        dimension = vec2(8, 8)
+        position = vec2(25, 9),
+        dimension = vec2(7, 7)
     },
     --LaserBall
     [22] = {
-        position = vec2(32, 8),
-        dimension = vec2(8, 8)
+        position = vec2(33, 8),
+        dimension = vec2(7, 8)
     },
     --AK
     [23] = {
-        position = vec2(40, 8),
-        dimension = vec2(8, 8)
+        position = vec2(41, 9),
+        dimension = vec2(6, 7)
     },
     --Pistol
     [24] = {
-        position = vec2(48, 8),
-        dimension = vec2(8, 8)
+        position = vec2(49, 12),
+        dimension = vec2(6, 4)
     },
     --Sniper
     [25] = {
-        position = vec2(56, 8),
-        dimension = vec2(8, 8)
+        position = vec2(57, 9),
+        dimension = vec2(6, 7)
     },
     --Blue Flag
     [30] = {
@@ -166,6 +171,11 @@ Textures = {
     [31] = {
         position = vec2(72, 16),
         dimension = vec2(8, 16)
+    },
+    --Leafs
+    [40] = {
+        position = vec2(80, 0),
+        dimension = vec2(8, 8)
     }
 }
 
@@ -184,15 +194,17 @@ Explosion = {
                     screen = flr((x + dx) / 128)
                     if(y + dy > Map.waterHeight) then
                         --Map:setMapDataByScreen(x + dx, y + dy, screen, -1)
-                        Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = -1
+                        Map:setMapData(x + dx, y + dy, -1)
+                        --Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = -1
                     else
                         --Map:setMapDataByScreen(x + dx, y + dy, screen, 0)
-                        Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = 0
+                        --Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = 0
+                        Map:setMapData(x + dx, y + dy, 0)
                     end
                 end
             end
         end
-        --add(Map.redrawBuffer, { position = vec2(x - radius - 1, y - radius - 1), dimension = vec2(radius * 2 + 2, radius * 2 + 2)})
+        add(Map.redrawBuffer, { position = vec2(x - radius, y - radius), dimension = vec2(radius * 2, radius * 2)})
     end
 }
 
@@ -331,9 +343,13 @@ C_PlayerController = {
             stairStartHeight = 0,
             stairDuration = 20,
             playerID = playerID == 1 and 1 or 0,
+            digTimer = 0,
             update = function(self, owner)
                 owner.velocity.x *= 0.75
                 owner.velocity.y -= 0.1
+                if(Map:getMapData(owner.transform.position.x, owner.transform.position.y) == -1) then
+                    owner.velocity.y = max(owner.velocity.y, -0.3)
+                end
                 --Go Right
                 if(btn(1, self.playerID)) then
                     owner.velocity.x += 0.4
@@ -347,10 +363,12 @@ C_PlayerController = {
                 end
 
                 --Dig
-                if(btn(3, self.playerID)) then 
+                if(btn(3, self.playerID) and self.digTimer <= 0) then 
                     owner.velocity.y = -2
-                    Explosion:new(owner.transform.position.x, owner.transform.position.y, 4)
+                    Explosion:new(owner.transform.position.x, owner.transform.position.y, 7)
+                    self.digTimer = 30
                 end
+                if(self.digTimer > 0) then self.digTimer -= 1 end
 
                 --Jump
                 if(btn(4, self.playerID)) then 
@@ -367,12 +385,14 @@ C_PlayerController = {
                     self.stairStartHeight = owner.transform.position.y
                 end
                 if(btn(2, self.playerID) and self.stairDuration > 0) then
-                    for x = self.stairPosition.y, self.stairStartHeight do
-                        Map:setMapData(self.stairPosition.x, self.stairPosition.y, 2, false)
+                    for y = self.stairPosition.y, self.stairStartHeight do
+                        if(Map:getMapData(self.stairPosition.x, y)<=0) then 
+                            Map:setMapData(self.stairPosition.x, y, 2, false)
+                        end
                     end
-                    add(Map.redrawBuffer, { position = vec2(dx, dy) })
+                    add(Map.redrawBuffer, { position = vec2(self.stairPosition.x, self.stairPosition.y), dimension = vec2(1, self.stairStartHeight - self.stairPosition.y) })
                     self.stairPosition.x += self.stairDirection and 1 or -1
-                    self.stairPosition.y -= 1
+                    self.stairPosition.y -= 0.7
                     self.stairDuration -= 1
                 end
             end
@@ -483,7 +503,7 @@ C_FlagPickup = {
         return {
             pickUpDistance = 5,
             update = function(self, owner)
-                local player = Game.players[owner.flagID == 30 and 2 else 1]
+                local player = Game.players[owner.flagID == 30 and 2 or 1]
                 if(player == nil) then return end
                 if(player.flag ~= nil) then return end
                 if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
@@ -762,7 +782,6 @@ FlagPickup = {
     end
 }
 
-Flag
 
 Blood = {
     new = function(self, x, y)
@@ -843,7 +862,7 @@ Player = {
         end
 
         entity.spawnPoint = vec2(x,y)
-        entity.weapon = nil
+        entity.weapon = Weapon_PistolWeapon:new(entity)
         entity.flag = nil
         entity.healthSystem = C_HealthSystem:new(entity, 50)
 
@@ -873,11 +892,33 @@ PlayerRespawner = {
     end
 }
 
+Tree = {
+    new = function(self, x)
+        local position = vec2(x, 0)
+
+        --Find Tree Position Height
+        while(Map:getMapData(position.x, position.y) <= 0) do
+            position.y += 1
+        end
+        position.y += 2
+
+        local iters = 30
+        for iteration = 0, iters do
+            position.y -= 1
+            position.x += Simplex2D(position.x, position.y) * 2
+            local width = (sin(iteration / iters) + 1) * 3 + 1
+            for x = -width, width do
+                Map:setMapData(position.x + x, position.y, (iteration <= iters/5*2) and 4 or 40, false)
+            end
+        end
+    end
+}
+
 
 function spawnWeapon()
     Game.weaponTimer -= 1
     if(Game.weaponTimer <= 0) then
-        Game.weaponTimer = 300
+        Game.weaponTimer = 400
         local weaponID = 20 + flr(rnd(6))
         WeaponDrop:new(weaponID)
     end
@@ -891,7 +932,7 @@ function generateMap()
         Map.mapData[screenX] = {}
         for y = 0, 127 do
             for x = 0, 127 do
-                local distance = 64 + Simplex2D((x + screenX * 128) / 200, seed) * 25 + Simplex2D((x + screenX * 128) / 50, seed) * 5 - y
+                local distance = Map.groundHeight + Simplex2D((x + screenX * 128) / 200, seed) * 25 + Simplex2D((x + screenX * 128) / 50, seed) * 5 - y
                 if distance < 0 then
                     --Create Grass
                     if(distance > -8 + Simplex2D((x + screenX * 128), 99) * 5) then
@@ -912,6 +953,10 @@ function generateMap()
                 end
             end
         end
+    end
+
+    for i = 0, 3 do
+        Tree:new(rnd(512))
     end
     forceRedraw = true
 end
@@ -1047,6 +1092,7 @@ function _draw()
         end
         --Draw entities
         foreach(Game.objects, function(obj) obj:draw(self) end)
+        if(stat(3) == 3) then printh(stat(1)) end
         return stat(3)<3
     end
 end
@@ -1096,22 +1142,22 @@ __gfx__
 091ccc100918881000640000003b000002ee200001dd00c000900a0002755000444ff4444f444444000000000000000044545444444444f45555d55555d55555
 00dc1c0000281800005000000bd000000022500001d1000009a590000094000044ff44444fff44440000000000000000444444454444f444555d555d55555d55
 000c0100000801000050000000d0000000d5000000d00000004040000040000044f4444444ff444400000000000000004444445444444544555555d5555555dd
-afafafaf6566556500000000000000000000000000000000000000000000000051100000522000000000000000000000d33333333333333b0000000000000000
-94949494d55d55d50000000000000000000200d00000000000000000000000005dd110005ee22000000000000000000033b3333b3b33b3330000000000000000
-4f4f4f4f556555550009000000000000020ee6000000000000000000000000005ccdd110588ee2200000000000000000bb3333b3b33bd3330000000000000000
-f464f464165551650a900000000000000087ae000000000000000000000000005ccccdd158888ee200000000000000003533a3333333333a0000000000000000
-545454545d5555d57f990000303bb60002ea78200000001c0000a00a606709ff5ccdd110588ee2200000000000000000333333d3335333330000000000000000
-464f464fd55455550a90000000000000006ee0000000000000000000000000005dd110005ee220000000000000000000333b3b33333393330000000000000000
-454545455451d54d00000000000000000d0020000000000000000000000000005110000052200000000000000000000033bdb3333333333b0000000000000000
-141414145555555500000000000000000000000000000000000000000000000050000000500000000000000000000000533333b3b3b333b30000000000000000
-0000006c000000e800909a00000000000000000200000000000000000000000f5000000050000000000000000000000039333b3b3b5333350000000000000000
-00000cc1000008820000489000000000060020000000000000000000000000f0500000005000000000000000000000003333b533333333330000000000000000
-00006c100000e8200008009a0000060000ce8d00000000000000000000000900d0000000e000000000000000000000003333d335333d33330000000000000000
-0006c100000e8200000008990000b00002ea7820000000000000000000000000d0000000e000000000000000000000003b333333335333330000000000000000
-00cc100000882000000040a90003000000879e00000000000000000000070000d0000000e00000000000000000000000b3333b3b33333b330000000000000000
-06c100000e8200000000089a0000000000d8e020000000000000000000600000d0000000e000000000000000000000003a33b3b33933b3bb0000000000000000
-cc10000088200000000890a00300000000020060000000000000000000000000d0000000e0000000000000000000000033333533b3b333330000000000000000
-c1000000820000000090a90000000000d0000000000000000000000060000000d0000000e00000000000000000000000b333333b3b3333d30000000000000000
+afafafaf6566556500000000000000000000000000000000000000000000000051100000522000000000000000000000d33333333333333b5555415141554555
+94949494d55d55d50000000000000000000200d00000000000000000000000005dd110005ee22000000000000000000033b3333b3b33b3335555115445555155
+4f4f4f4f556555550009000000000000020ee6000000000000000000000000005ccdd110588ee2200000000000000000bb3333b3b33bd3335555155455554155
+f464f464165551650a900000000000000087ae000000000000000000000000005ccccdd158888ee200000000000000003533a3333333333a1555555555554155
+545454545d5555d57f990000303bb60002ea78200000001c0000a00a606709ff5ccdd110588ee2200000000000000000333333d3335333335555455555555155
+464f464fd55455550a90000000000000006ee0000000000000000000000000005dd110005ee220000000000000000000333b3b33333393335455455555555555
+454545455451d54d00000000000000000d0020000000000000000000000000005110000052200000000000000000000033bdb3333333333b5415455515555555
+141414145555555500000000000000000000000000000000000000000000000050000000500000000000000000000000533333b3b3b333b35455455414551555
+0000006c000000e800909a00000000000000000200000000000000000000000f5000000050000000000000000000000039333b3b3b5333355455555414555145
+00000cc1000008820000489000000000060020000000000000000000000000f0500000005000000000000000000000003333b533333333335555545454551145
+00006c100000e8200008009a0000060000ce8d00000000000000000000000900d0000000e000000000000000000000003333d335333d33335455545555551145
+0006c100000e8200000008990000b00002ea7820000000000000000000000000d0000000e000000000000000000000003b333333335333331455541555551155
+00cc100000882000000040a90003000000879e00000000000000000000070000d0000000e00000000000000000000000b3333b3b33333b335555545455451555
+06c100000e8200000000089a0000000000d8e020000000000000000000600000d0000000e000000000000000000000003a33b3b33933b3bb1554551555451555
+cc10000088200000000890a00300000000020060000000000000000000000000d0000000e0000000000000000000000033333533b3b333335555155551551555
+c1000000820000000090a90000000000d0000000000000000000000060000000d0000000e00000000000000000000000b333333b3b3333d35555155551551555
 __sfx__
 c20d0020155201552018030180301a0301a0301c010200102101021010230102303021020210302001020010210102101018510195101a5101a5101e0501e0401c0201c02019020190201a0201a0201752014520
 300d0000042200b4001c1000b400196001a100267001960025700186002870026700196000c4001530015300267000c4000b2100b210092100921026700186001b100002000423004210042001f1002670026700
