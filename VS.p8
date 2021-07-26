@@ -6,6 +6,8 @@ __lua__
 #include noise.p8
 
 --Make BtnP only register the initial key delay
+--This is so that BtnP does not repeat the input, 
+--but only trigger once when it's pressed down
 poke(0x5f5c,99999)
 poke(0x5f5d,99999)
 
@@ -33,21 +35,21 @@ Map = {
         local dy = min(max(flr(y), 0), Map.screens.y*127)
         return Map.mapData[screen][flr(dy) * 128 + flr(dx)]
     end,
-    setMapData = function(self, x, y, index, addToRedrawBuffer)
-        addToRedrawBuffer = addToRedrawBuffer or true
+    setMapData = function(self, x, y, index)
         local dx = min(max(flr(x), 0), Map.screens.x*127)
         local dy = min(max(flr(y), 0), Map.screens.y*127)
-        if(addToRedrawBuffer) then add(Map.redrawBuffer, { position = vec2(dx, dy) }) end
         Map.mapData[min(max(flr(dx/128), 0), 3)][dy * 128 + (dx % 128)] = index
     end,
     setMapDataByScreen = function(self, x, y, screen, index)
         local dx = min(max(flr(x), 0), 127)
         local dy = min(max(flr(y), 0), 127)
-        add(Map.redrawBuffer, { position = vec2(dx + screen * 128, dy) })
         Map.mapData[screen][dy * 128 + (dx % 128)] = index
     end,
     redrawBuffer = {}
 }
+
+AvgPerformance = 0
+Time = 0
 
 Textures = {
     --Water, Negative Index with no collision
@@ -165,12 +167,12 @@ Textures = {
     --Blue Flag
     [30] = {
         position = vec2(64, 16),
-        dimension = vec2(8, 16)
+        dimension = vec2(6, 10)
     },
     --Red Flag
     [31] = {
-        position = vec2(72, 16),
-        dimension = vec2(8, 16)
+        position = vec2(70, 16),
+        dimension = vec2(6, 10)
     },
     --Leafs
     [40] = {
@@ -191,15 +193,12 @@ Explosion = {
         for dx = -radius, radius do
             for dy = -radius, radius do
                 if(dx*dx + dy*dy <= radius * radius) then
-                    screen = flr((x + dx) / 128)
+                    local ex = min(max(flr(dx + x), 0), Map.screens.x*127)
+                    local ey = min(max(flr(dy + y), 0), Map.screens.y*127)
                     if(y + dy > Map.waterHeight) then
-                        --Map:setMapDataByScreen(x + dx, y + dy, screen, -1)
-                        Map:setMapData(x + dx, y + dy, -1)
-                        --Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = -1
+                        Map.mapData[min(max(flr(ex/128), 0), 3)][ey * 128 + (ex % 128)] = -1
                     else
-                        --Map:setMapDataByScreen(x + dx, y + dy, screen, 0)
-                        --Map.mapData[screen][max(1,min(128*128, (y + dy) * 128 + (x + dx) % 128))] = 0
-                        Map:setMapData(x + dx, y + dy, 0)
+                        Map.mapData[min(max(flr(ex/128), 0), 3)][ey * 128 + (ex % 128)] = 0
                     end
                 end
             end
@@ -221,9 +220,8 @@ C_SpriteRenderer = {
                 if((posX >= 0 and posX < 128) or (posX + self.dim.x >= 0 and posX + self.dim.x < 128)) then
                     cspr(self.spriteIndex, drawPos.x, drawPos.y, not owner.isFacingRight)
                 end
-                
                 if(stat(3) == 3) then
-                    add(Map.redrawBuffer, { position = vec2(drawPos.x, drawPos.y), dimension = vec2(self.dim.x, self.dim.y)})
+                    add(Map.redrawBuffer, { position = vec2(drawPos.x, drawPos.y), spriteIndex = self.spriteIndex, flipped = not owner.isFacingRight })
                 end
             end
         }
@@ -265,6 +263,9 @@ C_LineRenderer = {
     end
 }
 
+--This is a really inefficient implementation of a velocity controller,
+--Because it basically needs to do a pixel by pixel simulation of the projectile in both directions.
+--I tried using a raycast here, but this is even worse.
 C_VelocityController = {
     new = function(self, takeSteps, simulationSteps)
         return{
@@ -274,6 +275,15 @@ C_VelocityController = {
                 --Handle Y Velocity
                 local velocityDir = self.simulationSteps * vec2(owner.velocity.x / abs(owner.velocity.x), owner.velocity.y / abs(owner.velocity.y))
                 local velocity = vec2(owner.velocity.x, owner.velocity.y)
+
+                --Screen Bounds
+                if(velocity.x + owner.transform.position.x < 0) then 
+                    velocity.x = -owner.transform.position.x
+                elseif(velocity.x + owner.transform.position.x > Map.screens.x * 128) then
+                    velocity.x = Map.screens.x * 128 - owner.transform.position.x
+                end
+
+                --Handle Y Velocity
                 local hitGround = false
                 if(owner.velocity.y ~= 0) then
                     while(velocity.y * velocityDir.y > 0) do
@@ -372,7 +382,7 @@ C_PlayerController = {
 
                 --Jump
                 if(btn(4, self.playerID)) then 
-                    if(Map:getMapData(owner.transform.position.x, owner.transform.position.y + 1) > 0) then
+                    if(Map:getMapData(owner.transform.position.x, owner.transform.position.y + 1) ~= 0) then
                         owner.velocity.y = 2
                     end
                 end
@@ -380,14 +390,14 @@ C_PlayerController = {
                 --Build
                 if(btnp(2, self.playerID)) then
                     self.stairDirection = owner.isFacingRight 
-                    self.stairPosition = vec2(owner.transform.position.x, owner.transform.position.y)
+                    self.stairPosition = vec2(owner.transform.position.x, owner.transform.position.y+1)
                     self.stairDuration = 20
                     self.stairStartHeight = owner.transform.position.y
                 end
                 if(btn(2, self.playerID) and self.stairDuration > 0) then
                     for y = self.stairPosition.y, self.stairStartHeight do
                         if(Map:getMapData(self.stairPosition.x, y)<=0) then 
-                            Map:setMapData(self.stairPosition.x, y, 2, false)
+                            Map:setMapData(self.stairPosition.x, y, 2)
                         end
                     end
                     add(Map.redrawBuffer, { position = vec2(self.stairPosition.x, self.stairPosition.y), dimension = vec2(1, self.stairStartHeight - self.stairPosition.y) })
@@ -400,6 +410,7 @@ C_PlayerController = {
     end
 }
 
+--Component that destroys the entity after a certain amount of frames
 C_Lifetime = {
     new = function(self, lifetime)
         return {
@@ -433,11 +444,15 @@ C_HealthSystem = {
                             Map:setMapData(x, 0, 7)
                             Map:setMapData(x, 1, 7)
                         end
+                        add(Map.redrawBuffer, { position = vec2(self.health + amount, 0), dimension = vec2(-amount, 2) })
+                        sfx(14)
                     else
                         for x = self.health, self.health + amount do
                             Map:setMapData(x, 0, 0)
                             Map:setMapData(x, 1, 0)
                         end
+                        add(Map.redrawBuffer, { position = vec2(self.health, 0), dimension = vec2(amount, 2) })
+                        sfx(14)
                     end
                 else
                     if(amount < 0) then
@@ -445,11 +460,15 @@ C_HealthSystem = {
                             Map:setMapData(512 - x, 0, 8)
                             Map:setMapData(512 - x, 1, 8)
                         end
+                        add(Map.redrawBuffer, { position = vec2(512 + amount - self.health, 0), dimension = vec2(-amount, 2) })
+                        sfx(14)
                     else
                         for x = self.health, self.health + amount do
                             Map:setMapData(512 - x, 0, 0)
                             Map:setMapData(512 - x, 1, 0)
                         end
+                        add(Map.redrawBuffer, { position = vec2(512 - amount - self.health, 0), dimension = vec2(amount, 2) })
+                        sfx(14)
                     end
                 end
 
@@ -498,6 +517,7 @@ C_WeaponPickup = {
     end
 }
 
+--Component let's the player pick up a flag when coming close to the entity
 C_FlagPickup = {
     new = function(self)
         return {
@@ -508,19 +528,18 @@ C_FlagPickup = {
                 if(player.flag ~= nil) then return end
                 if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
                     player.flag = owner
-                    owner.playerFollow = {
-                        player = player,
+                    add(player.components, {
                         update = function(self, owner)
-                            owner.transform.position = self.player.transform.position + (self.player.isFacingRight and 1 or -1) * vec2(-4, 0)
-                            owner.isFacingRight = self.player.isFacingRight
+                            owner.flag.transform.position = owner.transform.position + vec2(owner.isFacingRight and 1 or 3, -3)
                         end
-                    }
+                    })
                 end
             end
         }
     end
 }
 
+--Component that damages nearby players.
 C_Damage = {
     new = function(self, damageAmount)
         return {
@@ -539,6 +558,7 @@ C_Damage = {
     end
 }
 
+--Base abstract class for a weapon.
 Weapon = {
     new = function(self, parent, spriteID)
         local me = Entity:new(0, 0)
@@ -565,8 +585,8 @@ Weapon_Shotgun = {
         me.shoot = function(self)
             sfx(8)
             self.parent.velocity.x = self.parent.isFacingRight and -10 or 10
-            for i = -2, 2 do
-                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, i / 5, self.parent.playerID, 10, 7, 10, 4)
+            for i = 0, 4 do
+                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(1) - 0.5, self.parent.playerID, 10, 7, 10, 4)
             end
             
         me.isShooting = function(self)
@@ -624,8 +644,9 @@ Weapon_PistolWeapon = {
     new = function(self, parent)
         local me = Weapon:new(parent, 14)
         me.cooldown = 15
+        me.short = false
         me.shoot = function(self)
-            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 2 or -2, 0, self.parent.playerID, 5, 10, 40, 5)
+            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 2 or -2, rnd(0.1) - 0.05, self.parent.playerID, 5, 10, 40, 5)
             sfx(11)
         end
         
@@ -635,7 +656,8 @@ Weapon_PistolWeapon = {
             else
                 if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
                     self:shoot()
-                    self.cooldown = 15
+                    self.cooldown = self.short and 3 or 15
+                    self.short = not self.short
                 end
             end
         end
@@ -763,25 +785,21 @@ WeaponDrop = {
 
 FlagPickup = {
     new = function(self, flagID)
-        local me = Entity:new(flagID == 30 and 20 or 490, 0)
+        local me = Entity:new(flagID == 30 and 20 or 490, 4)
         me.flagID = flagID
-        me.playerFollow = nil
-        me.onHitGround = function(self)
-            self.velocity.y = 0.3
-        end
         add(me.components, C_FlagPickup:new(flagID))
         add(me.components, {
             update = function(self, owner)
-                owner.velocity.y -= 0.01
+                if(Map:getMapData(owner.transform.position.x, owner.transform.position.y+1) == 0) then
+                    owner.transform.position.y += 0.2
+                end
             end
         })
-        add(me.components, C_VelocityController:new(true))
         add(me.renderComponents, C_SpriteRenderer:new(flagID))
         add(Game.flags, me)
         return me
     end
 }
-
 
 Blood = {
     new = function(self, x, y)
@@ -846,19 +864,22 @@ Player = {
             for x = 0, 30 do
                 Blood:new(self.transform.position.x, self.transform.position.y)
             end
+
             --Respawn Player
             PlayerRespawner:new(self.spawnPoint.x, self.spawnPoint.y, self.playerID)
 
             --Remove Player from lists
-            del(Game.players, self)
+            Game.players[self.playerID] = nil
             del(Game.objects, self)
         end
 
         if(playerID == nil) then
             self.playerID += 1
             entity.playerID = self.playerID
+            add(Game.players, entity)
         else
             entity.playerID = playerID
+            Game.players[playerID] = entity
         end
 
         entity.spawnPoint = vec2(x,y)
@@ -870,7 +891,6 @@ Player = {
         add(entity.components, C_VelocityController:new(true, 1))
         add(entity.components, entity.healthSystem)
         add(entity.renderComponents, C_SpriteRenderer:new(entity.playerID == 1 and 5 or 6))
-        add(Game.players, entity)
         return entity
     end
 }
@@ -884,8 +904,17 @@ PlayerRespawner = {
             self.respawnTimer -= 1
             if(self.respawnTimer <= 0) then
                 Player:new(x, y, playerID)
-                foreach(Game.players, function(obj) obj.healthSystem.health = obj.healthSystem.maxHealth end)
+                foreach(Game.players, function(obj) 
+                    obj.healthSystem.health = obj.healthSystem.maxHealth 
+                    obj.flag = nil
+                end)
+                foreach(Game.flags, function(obj) 
+                    obj:destroy()
+                end)
+                Game.flags = {}
                 createHealthBar()
+                FlagPickup:new(30)
+                FlagPickup:new(31)
                 self:destroy()
             end
         end
@@ -897,7 +926,7 @@ Tree = {
         local position = vec2(x, 0)
 
         --Find Tree Position Height
-        while(Map:getMapData(position.x, position.y) <= 0) do
+        while(Map:getMapData(position.x, position.y) ~= 3) do
             position.y += 1
         end
         position.y += 2
@@ -908,7 +937,7 @@ Tree = {
             position.x += Simplex2D(position.x, position.y) * 2
             local width = (sin(iteration / iters) + 1) * 3 + 1
             for x = -width, width do
-                Map:setMapData(position.x + x, position.y, (iteration <= iters/5*2) and 4 or 40, false)
+                Map:setMapData(position.x + x, position.y, (iteration <= iters/5*2) and 4 or 40)
             end
         end
     end
@@ -990,6 +1019,33 @@ function redrawPixel(posX, posY)
     return true
 end
 
+function redrawSprite(posX, posY, spriteIndex, isFlipped)
+    local screen = stat(3)
+    posX = flr(posX) - screen * 128
+    posY = flr(posY)
+    local width = Textures[spriteIndex].dimension.x
+    local height = Textures[spriteIndex].dimension.y
+    if((posX >= 0 and posX < 128) or (posX + width >= 0 and posX + width < 128)) then
+        for x = max(posX,0), min(posX + width, 127) do
+            for y = max(posY, 0), min(posY + height, 127) do
+                if(isFlipped) then
+                    if(sget(Textures[spriteIndex].position.x + width - (x - posX + 1), Textures[spriteIndex].position.y + y - posY) ~= 0) then
+                        local pixel = Map:getMapDataByScreen(x, y, screen)
+                        local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
+                        pset(x, y, color)
+                    end
+                else
+                    if(sget(x - posX + Textures[spriteIndex].position.x, y - posY + Textures[spriteIndex].position.y) ~= 0) then
+                        local pixel = Map:getMapDataByScreen(x, y, screen)
+                        local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
+                        pset(x, y, color)
+                    end
+                end
+            end
+        end
+    end
+end
+
 function drawPixel(posX, posY, index)
     local x = posX - stat(3) * 128
     if(x < 0 or x >= 128) then return false end
@@ -997,11 +1053,6 @@ function drawPixel(posX, posY, index)
     local color = sget(posX % Textures[index].dimension.x + Textures[index].position.x, posY % Textures[index].dimension.y + Textures[index].position.y)
     pset(x, posY, color)
     return true
-end
-
-function setAndDrawPixel(posX, posY, index)
-    Map:setMapData(posX, posY, index)
-    redrawPixel(posX, posY)
 end
 
 function mod(x, m)
@@ -1019,24 +1070,12 @@ function round(x)
     end
 end
 
-function printList(list)
-    returnStr = "{"
-    for key, obj in pairs(list) do
-        returnStr = returnStr .. " " .. key .. " = "
-        --if(type(obj) == "table") then
-        --    returnStr = returnStr .. printList(obj) .. ", "
-        --else
-            returnStr = returnStr .. tostr(obj) .. ", "
-        --end
-    end
-    if(#returnStr > 1) then returnStr = sub(returnStr, 1, #returnStr - 2) .. " " end
-    return returnStr .. "}"
-end
-
 function _init()
     generateMap()
     Player:new(20,20)
     Player:new(490,20)
+    FlagPickup:new(30)
+    FlagPickup:new(31)
     createHealthBar()
 end
 
@@ -1053,6 +1092,8 @@ function createHealthBar()
         Map:setMapData(512-x, 0, 8)
         Map:setMapData(512-x, 1, 8)
     end
+    add(Map.redrawBuffer, { position = vec2(0, 0), dimension = vec2(50, 2)})
+    add(Map.redrawBuffer, { position = vec2(462, 0), dimension = vec2(50, 2)})
 end
 
 --Redraws the entire screen
@@ -1068,7 +1109,9 @@ end
 function redrawBuffer()
     palt(0, false)
     for i in all(Map.redrawBuffer) do
-        if(i.dimension == nil) then
+        if(i.spriteIndex ~= nil) then
+            redrawSprite(i.position.x, i.position.y, i.spriteIndex, i.flipped)
+        elseif(i.dimension == nil) then
             redrawPixel(i.position.x, i.position.y)
         else
             redrawRegion(i.position.x, i.position.y, i.dimension.x, i.dimension.y)
@@ -1080,6 +1123,7 @@ function redrawBuffer()
     end
 end
 
+--Activate Multiscreen Feature
 poke(0x5f36,1)
 function _draw()
     --Redraw the whole map
@@ -1092,7 +1136,11 @@ function _draw()
         end
         --Draw entities
         foreach(Game.objects, function(obj) obj:draw(self) end)
-        if(stat(3) == 3) then printh(stat(1)) end
+        --if(stat(3) == 3) then 
+            --AvgPerformance += stat(1)
+            --Time += 1
+            --printh("Performance: "..stat(1)..", Frame: "..Time..", Average: "..(AvgPerformance / Time))
+        --end
         return stat(3)<3
     end
 end
@@ -1142,22 +1190,22 @@ __gfx__
 091ccc100918881000640000003b000002ee200001dd00c000900a0002755000444ff4444f444444000000000000000044545444444444f45555d55555d55555
 00dc1c0000281800005000000bd000000022500001d1000009a590000094000044ff44444fff44440000000000000000444444454444f444555d555d55555d55
 000c0100000801000050000000d0000000d5000000d00000004040000040000044f4444444ff444400000000000000004444445444444544555555d5555555dd
-afafafaf6566556500000000000000000000000000000000000000000000000051100000522000000000000000000000d33333333333333b5555415141554555
-94949494d55d55d50000000000000000000200d00000000000000000000000005dd110005ee22000000000000000000033b3333b3b33b3335555115445555155
-4f4f4f4f556555550009000000000000020ee6000000000000000000000000005ccdd110588ee2200000000000000000bb3333b3b33bd3335555155455554155
-f464f464165551650a900000000000000087ae000000000000000000000000005ccccdd158888ee200000000000000003533a3333333333a1555555555554155
-545454545d5555d57f990000303bb60002ea78200000001c0000a00a606709ff5ccdd110588ee2200000000000000000333333d3335333335555455555555155
-464f464fd55455550a90000000000000006ee0000000000000000000000000005dd110005ee220000000000000000000333b3b33333393335455455555555555
-454545455451d54d00000000000000000d0020000000000000000000000000005110000052200000000000000000000033bdb3333333333b5415455515555555
-141414145555555500000000000000000000000000000000000000000000000050000000500000000000000000000000533333b3b3b333b35455455414551555
-0000006c000000e800909a00000000000000000200000000000000000000000f5000000050000000000000000000000039333b3b3b5333355455555414555145
-00000cc1000008820000489000000000060020000000000000000000000000f0500000005000000000000000000000003333b533333333335555545454551145
-00006c100000e8200008009a0000060000ce8d00000000000000000000000900d0000000e000000000000000000000003333d335333d33335455545555551145
-0006c100000e8200000008990000b00002ea7820000000000000000000000000d0000000e000000000000000000000003b333333335333331455541555551155
-00cc100000882000000040a90003000000879e00000000000000000000070000d0000000e00000000000000000000000b3333b3b33333b335555545455451555
-06c100000e8200000000089a0000000000d8e020000000000000000000600000d0000000e000000000000000000000003a33b3b33933b3bb1554551555451555
-cc10000088200000000890a00300000000020060000000000000000000000000d0000000e0000000000000000000000033333533b3b333335555155551551555
-c1000000820000000090a90000000000d0000000000000000000000060000000d0000000e00000000000000000000000b333333b3b3333d35555155551551555
+afafafaf6566556500000000000000000000000000000000000000000000000051100052200000000000000000000000d33333333333333b5555415141554555
+94949494d55d55d50000000000000000000200d00000000000000000000000005dd1105882200000000000000000000033b3333b3b33b3335555115445555155
+4f4f4f4f556555550009000000000000020ee6000000000000000000000000005ccdd15ee88200000000000000000000bb3333b3b33bd3335555155455554155
+f464f464165551650a900000000000000087ae000000000000000000000000005dd110588220000000000000000000003533a3333333333a1555555555554155
+545454545d5555d57f990000303bb60002ea78200000001c0000a00a606709ff51100052200000000000000000000000333333d3335333335555455555555155
+464f464fd55455550a90000000000000006ee00000000000000000000000000050000050000000000000000000000000333b3b33333393335455455555555555
+454545455451d54d00000000000000000d0020000000000000000000000000005000005000000000000000000000000033bdb3333333333b5415455515555555
+141414145555555500000000000000000000000000000000000000000000000050000050000000000000000000000000533333b3b3b333b35455455414551555
+0000006c000000e800909a00000000000000000200000000000000000000000f5000005000000000000000000000000039333b3b3b5333355455555414555145
+00000cc1000008820000489000000000060020000000000000000000000000f0500000500000000000000000000000003333b533333333335555545454551145
+00006c100000e8200008009a0000060000ce8d00000000000000000000000900000000000000000000000000000000003333d335333d33335455545555551145
+0006c100000e8200000008990000b00002ea7820000000000000000000000000000000000000000000000000000000003b333333335333331455541555551155
+00cc100000882000000040a90003000000879e0000000000000000000007000000000000000000000000000000000000b3333b3b33333b335555545455451555
+06c100000e8200000000089a0000000000d8e020000000000000000000600000000000000000000000000000000000003a33b3b33933b3bb1554551555451555
+cc10000088200000000890a003000000000200600000000000000000000000000000000000000000000000000000000033333533b3b333335555155551551555
+c1000000820000000090a90000000000d000000000000000000000006000000000000000000000000000000000000000b333333b3b3333d35555155551551555
 __sfx__
 c20d0020155201552018030180301a0301a0301c010200102101021010230102303021020210302001020010210102101018510195101a5101a5101e0501e0401c0201c02019020190201a0201a0201752014520
 300d0000042200b4001c1000b400196001a100267001960025700186002870026700196000c4001530015300267000c4000b2100b210092100921026700186001b100002000423004210042001f1002670026700
@@ -1173,6 +1221,7 @@ b10d00000c650376001b6000c6000c6502f6001b600326000c6500c600076000b6000c6503260031
 00030000146500e630086200111000610000100870002700001000010000000004000040000000001000010000000001000010000100001000010000000000000000000000000000000000000000000000000000
 0003000001440186600a420176501664015630146301363012620116200f6200c6200b62008620076200662005620036200362002620016200162000620006200062000620006200062000620006200061000610
 0001000006660074100a6200e13011110131201512016130171401814019130191201912019110191101911019110191101911019110181101910019100191001910019100191001910018100181001810018100
+000100000e2600d2600c2500a25009240072400523003230012200022000210063000530005300053000430004300033000330003300033000330003300023000230002300023000230001300013000030000200
 __music__
 00 01074345
 00 01020345
