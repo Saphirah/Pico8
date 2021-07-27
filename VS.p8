@@ -2,6 +2,11 @@ pico-8 cartridge // http://www.pico-8.com
 version 32
 __lua__
 
+--We know a lot of this code is not optimized for token count and very bad to read.
+--This is due to speed optimization.
+--Often to save token counts in critical loops we did not use the function, 
+--but implemented the code directly to save cycles.
+
 #include vector.p8
 #include noise.p8
 #include math.p8
@@ -21,7 +26,9 @@ Game = {
     flags = {},
     flagPads = {},
     weaponTimer = 300,
-    score = {}
+    score = {},
+    scoreToWin = 1,
+    isOver = false
 }
 
 Map = {
@@ -966,6 +973,26 @@ PlayerRespawner = {
     end
 }
 
+ScreenClearer = {
+    new = function(self)
+        local me = Entity:new(0, 0)
+        me.update = function(self)
+            self.transform.position.x += 2
+            if(self.transform.position.x > 128) then
+                if(Game.score[1] >= Game.scoreToWin) then
+                    Player:new(250, 20, 1)
+                else
+                    Player:new(250, 20, 2)
+                end
+                self:destroy()
+            end
+        end
+        me.draw = function(self)
+            rectfill(self.transform.position.x, 0, self.transform.position.x + 1, 128)
+        end
+    end
+}
+
 GameRestarter = {
     new = function(self, time)
         local entity = Entity:new(x, y)
@@ -979,18 +1006,27 @@ GameRestarter = {
                         obj:destroy(self) 
                     end 
                 end)
-            elseif(self.time == -1) then
-                Player:new(20,20, 1)
-                Player:new(490,20, 2)
-            elseif(self.time == -2) then
-                FlagPickup:new(30)
-                FlagPickup:new(31)
-            elseif(self.time == -3) then
-                FlagPad:new(32)
-                FlagPad:new(33)
-            elseif(self.time == -4) then
-                createHealthBar()
-                self:destroy()
+                Game.isOver = Game.score[1] >= Game.scoreToWin or Game.score[2] >= Game.scoreToWin
+            end
+            if(Game.isGameOver) then
+                if(self.time==0) then
+                    ScreenClearer:new()
+                    self:destroy()
+                end
+            else
+                if(self.time == -1) then
+                    Player:new(20,20, 1)
+                    Player:new(490,20, 2)
+                elseif(self.time == -2) then
+                    FlagPickup:new(30)
+                    FlagPickup:new(31)
+                elseif(self.time == -3) then
+                    FlagPad:new(32)
+                    FlagPad:new(33)
+                elseif(self.time == -4) then
+                    createHealthBar()
+                    self:destroy()
+                end
             end
         end
         return entity
