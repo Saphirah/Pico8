@@ -1246,6 +1246,7 @@ function _init()
     FlagPad:new(32)
     FlagPad:new(33)
     createHealthBar()
+    music(1)
 end
 
 function _update60()
