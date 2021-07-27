@@ -1,4 +1,4 @@
-__lua__
+--__lua__
 
 --Abstract Projectile Class
 Projectile = {
