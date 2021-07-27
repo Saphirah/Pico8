@@ -4,6 +4,9 @@ __lua__
 
 #include vector.p8
 #include noise.p8
+#include math.p8
+#include projectiles.p8
+#include weapons.p8
 
 --Make BtnP only register the initial key delay
 --This is so that BtnP does not repeat the input, 
@@ -16,6 +19,7 @@ Game = {
     pellets = {},
     players = {},
     flags = {},
+    flagPads = {},
     weaponTimer = 300
 }
 
@@ -174,6 +178,16 @@ Textures = {
         position = vec2(72, 16),
         dimension = vec2(6, 10)
     },
+    --Blue Flag Post
+    [32] = {
+        position = vec2(80, 28),
+        dimension = vec2(8, 4)
+    },
+    --Red Flag Post
+    [33] = {
+        position = vec2(88, 28),
+        dimension = vec2(8, 4)
+    },
     --Leafs
     [40] = {
         position = vec2(80, 0),
@@ -185,6 +199,7 @@ debug = false
 
 forceRedraw = true
 
+--Spawns an explosion and destroys the environment
 Explosion = {
     new = function(self, x, y, radius)
         local screen = 0
@@ -207,7 +222,7 @@ Explosion = {
     end
 }
 
---Component that controls the sprite rendering
+--RenderComponent that draws a Sprite
 C_SpriteRenderer = {
     new = function(self, spriteIndex)
         return {
@@ -228,6 +243,7 @@ C_SpriteRenderer = {
     end
 }
 
+--RenderComponent that draws a pixel
 C_PixelRenderer = {
     new = function(self, color)
         return {
@@ -245,6 +261,7 @@ C_PixelRenderer = {
     end
 }
 
+--RenderComponent that draws a line
 C_LineRenderer = {
     new = function(self, color, width)
         return {
@@ -263,10 +280,11 @@ C_LineRenderer = {
     end
 }
 
---This is a really inefficient implementation of a velocity controller,
---Because it basically needs to do a pixel by pixel simulation of the projectile in both directions.
---I tried using a raycast here, but this is even worse.
+--Component that simulates velocity and collision
 C_VelocityController = {
+    --This is a really inefficient implementation of a velocity controller,
+    --Because it basically needs to do a pixel by pixel simulation of the projectile in both directions.
+    --I tried using a raycast here, but this is even worse.
     new = function(self, takeSteps, simulationSteps)
         return{
             takeSteps = takeSteps or false,
@@ -340,6 +358,7 @@ C_VelocityController = {
     end
 }
 
+--Component that adds velocity, but no collision
 C_VelocityController_NoCollision = {
     new = function(self)
         return{
@@ -379,13 +398,13 @@ C_PlayerController = {
                 end
 
                 --Dig
-                if(btn(3, self.playerID) and self.digTimer <= 0) then 
-                    owner.velocity.y = -2
+                if(btn(3, self.playerID) and self.digTimer <= 0 and not damagedPlayer) then 
+                    owner.velocity.y = -3
                     sfx(15)
                     Explosion:new(owner.transform.position.x, owner.transform.position.y, 7)
                     self.digTimer = 30
                 end
-                if(self.digTimer > 0) then self.digTimer -= 1 end
+                if(self.digTimer > 0 and not damagedPlayer) then self.digTimer -= 1 end
 
                 --Jump
                 if(btn(4, self.playerID)) then                                  
@@ -413,6 +432,16 @@ C_PlayerController = {
                     self.stairPosition.y -= 0.7
                     self.stairDuration -= 1
                 end
+
+                --Damage Player on Stomp
+                if(owner.velocity.y <= -3) then
+                    local otherPlayer = Game.players[playerID == 1 and 2 or 1]
+                    if(otherPlayer ~= nil) then
+                        if(distance(owner.transform.position, otherPlayer.transform.position) <= 6) then
+                            otherPlayer.healthSystem:applyDamage(25)
+                        end
+                    end
+                end
             end
         }
     end
@@ -436,7 +465,7 @@ C_Lifetime = {
 --Component that controls a health value
 C_HealthSystem = {
     new = function(self, owner, maxHealth)
-        return {
+        local me = {
             health = maxHealth,
             maxHealth = maxHealth,
             owner = owner,
@@ -447,6 +476,7 @@ C_HealthSystem = {
                 
                 self.health = min(max(self.health - amount, 0) ,maxHealth)
 
+                --Terrible way to implement this, but the health bar needs to be redrawn on different locations using different formulas
                 if(self.owner.playerID == 1) then
                     if(amount < 0) then
                         for x = self.health - amount, self.health do
@@ -481,9 +511,15 @@ C_HealthSystem = {
                     end
                 end
 
-                printh("Health: "..self.health..", PlayerID: "..owner.playerID)
+                --Spawn BloodParticle
+                if(amount > 0) then
+                    for x = 0, flr(amount / 5) do
+                        BloodParticle:new(self.owner.transform.position.x, self.owner.transform.position.y)
+                    end
+                end
             end,
             --Not optimal to check every frame but the easiest way
+            --You can not check it in the applyDamage function, because then the foreach in the update function might get screwed
             update = function(self, owner)
                 if(self.health <= 0) then
                     owner:destroy()
@@ -491,6 +527,8 @@ C_HealthSystem = {
                 end
             end
         }
+        owner.healthSystem = me
+        return me
     end
 }
 
@@ -533,19 +571,20 @@ C_FlagPickup = {
     new = function(self)
         return {
             pickUpDistance = 5,
+            pickedUpPlayer = nil,
             update = function(self, owner)
                 local player = Game.players[owner.flagID == 30 and 2 or 1]
-                if(player == nil) then return end
-                if(player.flag ~= nil) then return end
-                if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
-                    player.flag = owner
-                    add(player.components, {
-                        update = function(self, owner)
-                            if(owner.flag ~= nil) then
-                                owner.flag.transform.position = owner.transform.position + vec2(owner.isFacingRight and 1 or 3, -3)
-                            end
-                        end
-                    })
+                if(player == nil) then 
+                    pickedUpPlayer = nil
+                    return
+                end
+                if(pickedUpPlayer == nil) then
+                    if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
+                        pickedUpPlayer = player
+                    end
+                end
+                if(pickedUpPlayer ~= nil) then
+                    owner.transform.position = pickedUpPlayer.transform.position + vec2(pickedUpPlayer.isFacingRight and 1 or 3, -3)
                 end
             end
         }
@@ -571,231 +610,6 @@ C_Damage = {
     end
 }
 
---Base abstract class for a weapon.
-Weapon = {
-    new = function(self, parent, spriteID)
-        local me = Entity:new(0, 0)
-        me.parent = parent
-        add(me.renderComponents, C_SpriteRenderer:new(spriteID))
-        me.update = function(self)
-            self.transform.position = self.parent.transform.position + (self.parent.isFacingRight and 1 or -1) * vec2(4, 0)
-            self.isFacingRight = self.parent.isFacingRight
-            self:isShooting()
-        end
-        me.isShooting = function(self)
-            if(btnp(5, self.parent.playerID == 1 and 1 or 0)) then
-                self:shoot()
-            end
-        end
-        return me
-    end
-}
-
-Weapon_Shotgun = {
-    new = function(self, parent)
-        local me = Weapon:new(parent, 10)
-        me.cooldown = 45
-        me.shoot = function(self)
-            sfx(8)
-            self.parent.velocity.x = self.parent.isFacingRight and -10 or 10
-            for i = 0, 4 do
-                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(1) - 0.5, self.parent.playerID, 10, 7, 10, 4)
-            end
-            
-        me.isShooting = function(self)
-            if(self.cooldown > 0) then
-                self.cooldown -= 1
-            else
-                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
-                    self:shoot()
-                    self.cooldown = 45
-                end
-            end
-        end
-    end
-        return me
-    end
-}
-
-Weapon_LaserWeapon = {
-    new = function(self, parent)
-        local me = Weapon:new(parent, 11)
-        me.shoot = function(self)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 5 or -5, 0, self.parent.playerID, 20, 11, 5, 50, 0)
-            sfx(9)
-        end
-        return me
-    end
-}
-
-Weapon_LaunchWeapon = {
-    new = function(self, parent)
-        local me = Weapon:new(parent, 12)
-        me.cooldown = 60
-        me.shoot = function(self)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 400, 8)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y-1, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 5, 14, 6, 400, 3)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y+1, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 5, 14, 6, 400, 3)
-            sfx(10)
-        end
-        
-        me.isShooting = function(self)
-            if(self.cooldown > 0) then
-                self.cooldown -= 1
-            else
-                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
-                    self:shoot()
-                    self.cooldown = 60
-                end
-            end
-        end
-        return me
-    end
-}
-
-Weapon_PistolWeapon = {
-    new = function(self, parent)
-        local me = Weapon:new(parent, 14)
-        me.cooldown = 15
-        me.short = false
-        me.shoot = function(self)
-            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 2 or -2, rnd(0.1) - 0.05, self.parent.playerID, 5, 10, 40, 5)
-            sfx(11)
-        end
-        
-        me.isShooting = function(self)
-            if(self.cooldown > 0) then
-                self.cooldown -= 1
-            else
-                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
-                    self:shoot()
-                    self.cooldown = self.short and 3 or 15
-                    self.short = not self.short
-                end
-            end
-        end
-        return me
-    end
-}
-
-Weapon_AK = {
-    new = function(self, parent)
-        local me = Weapon:new(parent, 13)
-        me.cooldown = 3
-        me.shoot = function(self)
-            sfx(11)
-            self.parent.velocity.x = self.parent.isFacingRight and -1 or 1
-            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(0.5) - 0.25, self.parent.playerID, 3, 7, 50, 3)
-        end
-        me.isShooting = function(self)
-            if(self.cooldown > 0) then
-                self.cooldown -= 1
-            else
-                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
-                    self:shoot()
-                    self.cooldown = 3
-                end
-            end
-        end
-        return me
-    end
-}
-
-Weapon_SniperWeapon = {
-    new = function(self, parent)
-        local me = Weapon:new(parent, 15)
-        me.cooldown = 50
-        me.shoot = function(self)
-            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 25 or -25, 0, self.parent.playerID, 15, 6, 30, 30, 4)
-            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 22 or -22, 0, self.parent.playerID, 15, 6, 30, 30, 4)
-        end
-        me.isShooting = function(self)
-            if(self.cooldown > 0) then
-                self.cooldown -= 1
-            else
-                if(btn(5, self.parent.playerID == 1 and 1 or 0)) then
-                    self:shoot()
-                    self.cooldown = 50
-                    sfx(12)
-                end
-            end
-        end
-        return me
-    end
-}
-
-Projectile = {
-    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
-        local me = Entity:new(x, y-4)
-        add(me.components, C_VelocityController:new(false))
-        add(me.components, C_Lifetime:new(lifetime))
-        add(me.components, C_Damage:new(damage))
-        me.velocity = vec2(velocityX, velocityY)
-        me.playerID = playerID
-        if(explosionRadius > 0) then
-            me.explosionRadius = explosionRadius
-            me.onHitGround = function(self)
-                Explosion:new(self.transform.position.x, self.transform.position.y, self.explosionRadius)
-                me:destroy()
-            end
-        else
-            me.onHitGround = function(self)
-                me:destroy()
-            end
-        end
-        me.destroy = function(self)
-            del(Game.objects, self)
-        end
-        return me
-    end
-}
-
-Projectile_Pellet = {
-    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
-        local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
-        add(me.renderComponents, C_PixelRenderer:new(10))
-        return me
-    end
-}
-
-Projectile_Laser = {
-    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
-        local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
-        add(me.renderComponents, C_LineRenderer:new(color, width))
-        return me
-    end
-}
-
-Projectile_Sniper = {
-    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
-        local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
-        add(me.renderComponents, C_LineRenderer:new(color, width))
-        return me
-    end
-}
-
-WeaponDrop = {
-    new = function(self, weaponID)
-        local me = Entity:new(flr(rnd(516)), 0)
-        me.weaponID = weaponID
-        me.lastDownVelocity = 0
-        me.onHitGround = function(self)
-            self.velocity.y = 0.3
-        end
-        add(me.components, C_Lifetime:new(900))
-        add(me.components, C_WeaponPickup:new(weaponID))
-        add(me.components, {
-            update = function(self, owner)
-                owner.velocity.y -= 0.01
-                self.lastDownVelocity = owner.velocity.y
-            end
-        })
-        add(me.components, C_VelocityController:new(true))
-        add(me.renderComponents, C_SpriteRenderer:new(weaponID))
-        return me
-    end
-}
-
 FlagPickup = {
     new = function(self, flagID)
         local me = Entity:new(flagID == 30 and 20 or 490, 4)
@@ -814,20 +628,51 @@ FlagPickup = {
     end
 }
 
-Blood = {
-    new = function(self, x, y)
+FlagPad = {
+    new = function(self, padID)
+        local x = padID == 32 and 490 or 20
+        local me = Entity:new(x, getHeightOfMap(x))
+        me.padID = padID
+        add(me.renderComponents, C_SpriteRenderer:new(padID))
+        add(Game.flagPads, me)
+        return me
+    end
+}
+
+--Abstract Particle Class
+Particle = {
+    new = function(self, x, y, color)
         local me = Entity:new(x, y)
-        add(me.renderComponents, C_PixelRenderer:new(8))
-        me.velocity = vec2(rnd(2)-1, rnd(3))
-        me.lifetime = 120
+        add(me.renderComponents, C_PixelRenderer:new(color))
+        me.lifetime = 60
         me.update = function(self)
-            self.velocity -= vec2(0, 0.1)
             self.transform.position += vec2(self.velocity.x, -self.velocity.y)
             self.lifetime -= 1
-            if(self.lifetime <= 0) then
+            if(self.lifetime <= 0 or self.transform.position.y > Map.screens.y * 128) then
                 self:destroy()
             end
         end
+        return me
+    end
+}
+
+BloodParticle = {
+    new = function(self, x, y)
+        local me = Particle:new(x, y, 8)
+        me.velocity = vec2(rnd(2)-1, rnd(3))
+        me.oldUpdate = me.update
+        me.update = function(self)
+            self.velocity -= vec2(0, 0.1)
+            self:oldUpdate()
+        end
+    end
+}
+
+FlagPadParticle = {
+    new = function(self, x, y, color)
+        local me = Particle:new(x, y, color)
+        me.velocity = vec2(rnd(1)-0.5, rnd(2)+1)
+        me.lifetime = 30
     end
 }
 
@@ -873,9 +718,9 @@ Player = {
                 self.weapon:destroy()
             end
 
-            --Blood Splatter
+            --BloodParticle Splatter
             for x = 0, 30 do
-                Blood:new(self.transform.position.x, self.transform.position.y)
+                BloodParticle:new(self.transform.position.x, self.transform.position.y)
             end
 
             --Respawn Player
@@ -898,16 +743,16 @@ Player = {
         entity.spawnPoint = vec2(x,y)
         entity.weapon = Weapon_PistolWeapon:new(entity)
         entity.flag = nil
-        entity.healthSystem = C_HealthSystem:new(entity, 50)
 
         add(entity.components, C_PlayerController:new(entity.playerID))
         add(entity.components, C_VelocityController:new(true, 1))
-        add(entity.components, entity.healthSystem)
+        add(entity.components, C_HealthSystem:new(entity, 50))
         add(entity.renderComponents, C_SpriteRenderer:new(entity.playerID == 1 and 5 or 6))
         return entity
     end
 }
 
+--Respawns the player after a few seconds
 PlayerRespawner = {
     new = function(self, x, y, playerID)
         local me = Entity:new(x, y)
@@ -934,14 +779,13 @@ PlayerRespawner = {
     end
 }
 
+--Spawns a tree at the x coordinate
 Tree = {
     new = function(self, x)
         local position = vec2(x, 0)
 
         --Find Tree Position Height
-        while(Map:getMapData(position.x, position.y) ~= 3) do
-            position.y += 1
-        end
+        position.y = getHeightOfMap(position.x)
         position.y += 2
 
         local iters = 30
@@ -956,7 +800,16 @@ Tree = {
     end
 }
 
+--Returns the grass height at a position of the map
+function getHeightOfMap(x)
+    local height = 0
+    while(Map:getMapData(x, height) ~= 3) do
+        height += 1
+    end
+    return height
+end
 
+--Spawn weapon loop
 function spawnWeapon()
     Game.weaponTimer -= 1
     if(Game.weaponTimer <= 0) then
@@ -966,6 +819,7 @@ function spawnWeapon()
     end
 end
 
+--Recreates the map from scratch
 function generateMap()
     local seed = rnd(100)
     Map.mapData = {}    
@@ -1003,6 +857,7 @@ function generateMap()
     forceRedraw = true
 end
 
+--Redraws a region of the screen
 function redrawRegion(posX, posY, width, height)
     local screen = stat(3)
     posX = flr(posX) - screen * 128
@@ -1022,6 +877,7 @@ function redrawRegion(posX, posY, width, height)
     end
 end
 
+--Redraws a pixel of the screen
 function redrawPixel(posX, posY)
     local x = posX - stat(3) * 128
     if(x < 0 or x >= 128) then return false end
@@ -1032,6 +888,7 @@ function redrawPixel(posX, posY)
     return true
 end
 
+--Redraws a region of the screen defined by the sprite mask
 function redrawSprite(posX, posY, spriteIndex, isFlipped)
     local screen = stat(3)
     posX = flr(posX) - screen * 128
@@ -1059,6 +916,8 @@ function redrawSprite(posX, posY, spriteIndex, isFlipped)
     end
 end
 
+--Draws a pixel of a specific id at a specific pixel
+--Respects tiling of texture
 function drawPixel(posX, posY, index)
     local x = posX - stat(3) * 128
     if(x < 0 or x >= 128) then return false end
@@ -1066,35 +925,6 @@ function drawPixel(posX, posY, index)
     local color = sget(posX % Textures[index].dimension.x + Textures[index].position.x, posY % Textures[index].dimension.y + Textures[index].position.y)
     pset(x, posY, color)
     return true
-end
-
-function mod(x, m)
-    while x < 0 do
-        x += m
-    end
-    return x%m
-end
-
-function round(x)
-    if(x%1 >= 0.5) then
-        return ceil(x)
-    else
-        return flr(x)
-    end
-end
-
-function _init()
-    generateMap()
-    Player:new(20,20)
-    Player:new(490,20)
-    FlagPickup:new(30)
-    FlagPickup:new(31)
-    createHealthBar()
-end
-
-function _update60()
-    foreach(Game.objects, function(obj) obj:update(self) end)
-    spawnWeapon()
 end
 
 --Draws the health bar for both players
@@ -1136,14 +966,43 @@ function redrawBuffer()
     end
 end
 
+--Custom Sprite draw function supporting the ID's defined under Textures
+function cspr(id, posX, posY, flipX, flipY)
+    flipX = flipX or false
+    flipY = flipY or false
+    local dim = Textures[id].dimension
+    local screen = stat(3)
+    posX -= screen * 128
+    if((posX >= 0 and posX < 128) or (posX + dim.x >= 0 and posX + dim.x < 128)) then
+        sspr(Textures[id].position.x, Textures[id].position.y, dim.x, dim.y, posX, posY, dim.x, dim.y, flipX, flipY)
+    end
+end
+
+function _init()
+    generateMap()
+    Player:new(20,20)
+    Player:new(490,20)
+    FlagPickup:new(30)
+    FlagPickup:new(31)
+    FlagPad:new(32)
+    FlagPad:new(33)
+    createHealthBar()
+end
+
+function _update60()
+    foreach(Game.objects, function(obj) obj:update(self) end)
+    spawnWeapon()
+end
+
 --Activate Multiscreen Feature
 poke(0x5f36,1)
 function _draw()
-    --Redraw the whole map
+    printh(#Game.objects)
     if(forceRedraw) then
+        --Redraw the whole map
         return redrawScreen()
-    --Redraw parts of the screen
     else
+        --Redraw parts of the screen
         if #Map.redrawBuffer > 0 then
             redrawBuffer()
         end
@@ -1158,26 +1017,9 @@ function _draw()
     end
 end
 
-function to2D(index, width)
-    return vec2(index % width, flr(index / width))
-end
-
-function to1D(indexX, indexY, width)
-    return indexY * width + indexX + 1
-end
-
-function cspr(id, posX, posY, flipX, flipY)
-    flipX = flipX or false
-    flipY = flipY or false
-    local dim = Textures[id].dimension
-    local screen = stat(3)
-    posX -= screen * 128
-    if((posX >= 0 and posX < 128) or (posX + dim.x >= 0 and posX + dim.x < 128)) then
-        sspr(Textures[id].position.x, Textures[id].position.y, dim.x, dim.y, posX, posY, dim.x, dim.y, flipX, flipY)
-    end
-end
-
-_camera = camera -- save original camera function reference
+-- save original camera function reference
+_camera = camera 
+--Custom camera function for multiscreen
 function camera(x,y)
     x = x or 0
     y = y or 0
