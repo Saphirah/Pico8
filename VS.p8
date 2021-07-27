@@ -31,26 +31,27 @@ Map = {
     mapData = {},
     heightMap = {},
     getMapData = function(self, x, y)
-        local dx = min(max(flr(x), 0), Map.screens.x*127)
-        local dy = min(max(flr(y), 0), Map.screens.y*127)
-        return Map.mapData[min(max(flr(dx/128), 0), 3)][dy * 128 + (dx % 128)]
+        local dx = mid(flr(x), Map.screens.x*127)
+        local dy = mid(flr(y), Map.screens.y*127)
+        return Map.mapData[mid(flr(dx/128), 3)][dy * 128 + (dx % 128)]
     end,
     getMapDataByScreen = function(self, x, y, screen)
-        local dx = min(max(flr(x), 0), Map.screens.x*127)
-        local dy = min(max(flr(y), 0), Map.screens.y*127)
+        local dx = mid(flr(x), Map.screens.x*127)
+        local dy = mid(flr(y), Map.screens.y*127)
         return Map.mapData[screen][flr(dy) * 128 + flr(dx)]
     end,
     setMapData = function(self, x, y, index)
-        local dx = min(max(flr(x), 0), Map.screens.x*127)
-        local dy = min(max(flr(y), 0), Map.screens.y*127)
-        Map.mapData[min(max(flr(dx/128), 0), 3)][dy * 128 + (dx % 128)] = index
+        local dx = mid(flr(x), Map.screens.x*127)
+        local dy = mid(flr(y), Map.screens.y*127)
+        Map.mapData[mid(flr(dx/128), 3)][dy * 128 + (dx % 128)] = index
     end,
     setMapDataByScreen = function(self, x, y, screen, index)
-        local dx = min(max(flr(x), 0), 127)
-        local dy = min(max(flr(y), 0), 127)
+        local dx = mid(flr(x), 127)
+        local dy = mid(flr(y), 127)
         Map.mapData[screen][dy * 128 + (dx % 128)] = index
     end,
-    redrawBuffer = {}
+    redrawBuffer = {},
+    nextRedrawBuffer = {}
 }
 
 AvgPerformance = 0
@@ -199,7 +200,7 @@ Textures = {
         position = vec2(80, 12),
         dimension = vec2(3, 3)
     },
---Shotgun
+    --Shotgun
     --ShotgunBlast01
     [50] = {
         position = vec2(16, 16),
@@ -216,7 +217,7 @@ Textures = {
         dimension = vec2(4, 8)
     },
 
---Laser
+    --Laser
     --LaserBlast01
     [53] = {
         position = vec2(24, 16),
@@ -238,7 +239,7 @@ Textures = {
         dimension = vec2(4, 4)
     },
 
---Launcher
+    --Launcher
     --LauncherBlast01
     [57] = {
         position = vec2(32, 16),
@@ -260,7 +261,7 @@ Textures = {
         dimension = vec2(8, 8)
     },
 
---Sniper
+    --Sniper
     --SniperHit01
     [62] = {
         position = vec2(56, 16),
@@ -277,7 +278,7 @@ Textures = {
         dimension = vec2(5, 4)
     },
 
---Pellet
+    --Pellet
     --PelletHit01
     [65] = {
         position = vec2(80, 12),
@@ -308,18 +309,17 @@ updateScore = true
 --Spawns an explosion and destroys the environment
 Explosion = {
     new = function(self, x, y, radius)
-        local screen = 0
         x = flr(x)
         y = flr(y)
         for dx = -radius, radius do
             for dy = -radius, radius do
                 if(dx*dx + dy*dy <= radius * radius) then
-                    local ex = min(max(flr(dx + x), 0), Map.screens.x*127)
-                    local ey = min(max(flr(dy + y), 0), Map.screens.y*127)
+                    local ex = mid(flr(dx + x), Map.screens.x*127)
+                    local ey = mid(flr(dy + y), Map.screens.y*127)
                     if(y + dy > Map.waterHeight) then
-                        Map.mapData[min(max(flr(ex/128), 0), 3)][ey * 128 + (ex % 128)] = -1
+                        Map.mapData[mid(flr(ex/128), 3)][ey * 128 + (ex % 128)] = -1
                     else
-                        Map.mapData[min(max(flr(ex/128), 0), 3)][ey * 128 + (ex % 128)] = 0
+                        Map.mapData[mid(flr(ex/128), 3)][ey * 128 + (ex % 128)] = 0
                     end
                 end
             end
@@ -623,7 +623,7 @@ C_HealthSystem = {
                 if(amount == 0) then return end
                 sfx(14)
                 
-                self.health = min(max(self.health - amount, 0) ,maxHealth)
+                self.health = mid(self.health - amount ,maxHealth)
 
                 --Terrible way to implement this, but the health bar needs to be redrawn on different locations using different formulas
                 if(self.owner.playerID == 1) then
@@ -744,7 +744,7 @@ C_FlagPickup = {
                     end
                     --Check if flag is at pad
                     if(distance(player.transform.position, pad.transform.position) <= 5) then
-                        Game.score[owner.flagID - 29] += 1
+                        Game.score[owner.flagID == 30 and 2 or 1] += 1
                         for x = 0, 15 do
                             GravityParticle:new(pad.transform.position.x, pad.transform.position.y, ceil(rnd(14)), rnd(4)-2, rnd(7))
                         end
@@ -1070,13 +1070,15 @@ function redrawRegion(posX, posY, width, height)
     posX = flr(posX) - screen * 128
     posY = flr(posY)
     if((posX >= 0 and posX < 128) or (posX + width >= 0 and posX + width < 128)) then
-        for x = max(posX,0), min(posX + width, 127) do
-            for y = max(posY, 0), min(posY + height, 127) do
+        local xFrom = max(posX,0)
+        local xTo = min(posX + width, 127)
+        local yFrom = max(posY, 0)
+        local yTo = min(posY + height, 127)
+        for x = xFrom, xTo do
+            for y = yFrom, yTo do
                 local pixel = Map:getMapDataByScreen(x, y, screen)
                 local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
-                if(forceRedraw) then
-                    pset(x, y, color)
-                else
+                if(color ~= pget(x, y)) then
                     pset(x, y, color)
                 end
             end
@@ -1091,7 +1093,9 @@ function redrawPixel(posX, posY)
 
     local pixel = Map:getMapData(posX, posY)
     local color = sget(posX % Textures[pixel].dimension.x + Textures[pixel].position.x, posY % Textures[pixel].dimension.y + Textures[pixel].position.y)
-    pset(x, posY, color)
+    if(color ~= pget(x, posY)) then
+        pset(x, posY, color)
+    end
     return true
 end
 
@@ -1109,13 +1113,17 @@ function redrawSprite(posX, posY, spriteIndex, isFlipped)
                     if(sget(Textures[spriteIndex].position.x + width - (x - posX + 1), Textures[spriteIndex].position.y + y - posY) ~= 0) then
                         local pixel = Map:getMapDataByScreen(x, y, screen)
                         local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
-                        pset(x, y, color)
+                        if(color ~= pget(x, y)) then
+                            pset(x, y, color)
+                        end
                     end
                 else
                     if(sget(x - posX + Textures[spriteIndex].position.x, y - posY + Textures[spriteIndex].position.y) ~= 0) then
                         local pixel = Map:getMapDataByScreen(x, y, screen)
                         local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
-                        pset(x, y, color)
+                        if(color ~= pget(x, y)) then
+                            pset(x, y, color)
+                        end
                     end
                 end
             end
@@ -1166,10 +1174,12 @@ function redrawBuffer()
         else
             redrawRegion(i.position.x, i.position.y, i.dimension.x, i.dimension.y)
         end
+        if(stat(1) > 0.7) then break end
     end
     palt(0, true)
     if(stat(3)==3) then
-        Map.redrawBuffer = {}
+        Map.redrawBuffer = Map.nextRedrawBuffer
+        Map.nextRedrawBuffer = {}
     end
 end
 
@@ -1220,6 +1230,7 @@ function _draw()
             printh("Performance: "..stat(1)..", Frame: "..Time..", Average: "..(AvgPerformance / Time))
         end
         if(updateScore and stat(3) == 2) then 
+            rectfill(1,1,15, 5, 0)
             print(Game.score[1].."-"..Game.score[2], 1, 1, 7)
             updateScore = false
         end
