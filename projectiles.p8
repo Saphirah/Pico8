@@ -1,4 +1,4 @@
-__lua__
+--__lua__
 
 --Abstract Projectile Class
 Projectile = {
@@ -32,7 +32,7 @@ Projectile_Pellet = {
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_PixelRenderer:new(10))
         me.destroy = function(self)            
-            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{13,14,15})
+            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{65,66,67,68})
             del(Game.objects, self)
         end
         return me
@@ -43,6 +43,10 @@ Projectile_Laser = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_LineRenderer:new(color, width))
+        me.destroy = function(self)            
+            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{53,54,55,56})
+            del(Game.objects, self)
+        end
         return me
     end
 }
@@ -50,7 +54,11 @@ Projectile_Laser = {
 Projectile_Launcher = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
-        add(me.renderComponents, C_AnimatedSpriteRenderer:new({48,49}, 2, true))
+        add(me.renderComponents, C_AnimatedSpriteRenderer:new({57,58}, 2, true))
+        me.destroy = function(self)            
+            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{60,61})
+            del(Game.objects, self)
+        end
         return me
     end
 }
@@ -59,6 +67,10 @@ Projectile_Sniper = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_LineRenderer:new(color, width))
+        me.destroy = function(self)            
+            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{62,63,64})
+            del(Game.objects, self)
+        end
         return me
     end
 }
