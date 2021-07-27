@@ -74,7 +74,7 @@ Weapon_LaserWeapon = {
     new = function(self, parent)
         local me = Weapon:new(parent, 11)
         me.shoot = function(self)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 5 or -5, 0, self.parent.playerID, 20, 11, 5, 50, 0)
+            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 5 or -5, 0, self.parent.playerID, 12, 11, 5, 50, 0)
             sfx(9)
         end
         return me
@@ -86,7 +86,7 @@ Weapon_LaunchWeapon = {
         local me = Weapon:new(parent, 12)
         me.cooldown = 60
         me.shoot = function(self)
-            Projectile_Launcher:new(self.transform.position.x, self.transform.position.y + 5, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 400, 6)
+            Projectile_Launcher:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 400, 7)
             sfx(10)
         end
         
@@ -110,7 +110,7 @@ Weapon_PistolWeapon = {
         me.cooldown = 15
         me.short = false
         me.shoot = function(self)
-            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 2 or -2, rnd(0.1) - 0.05, self.parent.playerID, 5, 10, 40, 5)
+            Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 2 or -2, rnd(0.1) - 0.05, self.parent.playerID, 5, 10, 40, 4)
             sfx(11)
         end
         
