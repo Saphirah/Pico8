@@ -749,6 +749,7 @@ C_FlagPickup = {
                 if(self.pickedUpPlayer == nil) then
                     if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
                         self.pickedUpPlayer = player
+                        sfx(13)
                     end
                 end
                 if(self.pickedUpPlayer ~= nil) then
@@ -763,6 +764,7 @@ C_FlagPickup = {
                     --Check if flag is at pad
                     if(distance(player.transform.position, pad.transform.position) <= 5) then
                         Game.score[owner.flagID == 30 and 2 or 1] += 1
+                        sfx(18)
                         for x = 0, 15 do
                             GravityParticle:new(pad.transform.position.x, pad.transform.position.y, ceil(rnd(14)), rnd(4)-2, rnd(7))
                         end
