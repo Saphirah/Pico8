@@ -106,7 +106,7 @@ Textures = {
     --Shotgun
     [10] = {
         position = vec2(16, 2),
-        dimension = vec2(8, 3)
+        dimension = vec2(8, 4)
     },
     --LaserWeapon
     [11] = {
@@ -171,7 +171,7 @@ Textures = {
     },
     --Red Flag
     [31] = {
-        position = vec2(70, 16),
+        position = vec2(72, 16),
         dimension = vec2(6, 10)
     },
     --Leafs
@@ -283,6 +283,12 @@ C_VelocityController = {
                     velocity.x = Map.screens.x * 128 - owner.transform.position.x
                 end
 
+                if(owner.transform.position.y - velocity.y < 0) then 
+                    velocity.y = owner.transform.position.y
+                elseif(owner.transform.position.y - velocity.y > Map.screens.y * 128) then
+                    velocity.y = owner.transform.position.y - Map.screens.y * 128
+                end
+
                 --Handle Y Velocity
                 local hitGround = false
                 if(owner.velocity.y ~= 0) then
@@ -392,12 +398,12 @@ C_PlayerController = {
                 --Build
                 if(btnp(2, self.playerID)) then
                     self.stairDirection = owner.isFacingRight 
-                    self.stairPosition = vec2(owner.transform.position.x, owner.transform.position.y+1)
-                    self.stairDuration = 20
-                    self.stairStartHeight = owner.transform.position.y
+                    self.stairPosition = vec2(owner.transform.position.x + (owner.isFacingRight and 3 or -3), owner.transform.position.y+2)
+                    self.stairDuration = 30
+                    self.stairStartHeight = owner.transform.position.y+2
                 end
                 if(btn(2, self.playerID) and self.stairDuration > 0) then
-                    for y = self.stairPosition.y, self.stairStartHeight do
+                    for y = self.stairPosition.y, self.stairPosition.y + 3 do
                         if(Map:getMapData(self.stairPosition.x, y)<=0) then 
                             Map:setMapData(self.stairPosition.x, y, 2)
                         end
@@ -535,7 +541,9 @@ C_FlagPickup = {
                     player.flag = owner
                     add(player.components, {
                         update = function(self, owner)
-                            owner.flag.transform.position = owner.transform.position + vec2(owner.isFacingRight and 1 or 3, -3)
+                            if(owner.flag ~= nil) then
+                                owner.flag.transform.position = owner.transform.position + vec2(owner.isFacingRight and 1 or 3, -3)
+                            end
                         end
                     })
                 end
