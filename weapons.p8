@@ -52,7 +52,7 @@ Weapon_Shotgun = {
             ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{50,51,52})
             self.parent.velocity.x = self.parent.isFacingRight and -10 or 10
             for i = 0, 4 do
-                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(1) - 0.5, self.parent.playerID, 10, 7, 10, 4)
+                Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(1) - 0.5, self.parent.playerID, 10, 7, rnd(4)+6, 4)
             end
             
         me.isShooting = function(self)

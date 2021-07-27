@@ -20,7 +20,8 @@ Game = {
     players = {},
     flags = {},
     flagPads = {},
-    weaponTimer = 300
+    weaponTimer = 300,
+    score = {}
 }
 
 Map = {
@@ -302,6 +303,7 @@ Textures = {
 debug = false
 
 forceRedraw = true
+updateScore = true
 
 --Spawns an explosion and destroys the environment
 Explosion = {
@@ -347,6 +349,7 @@ C_SpriteRenderer = {
     end
 }
 
+--RendererComponent that draws different sprites each frame
 C_AnimatedSpriteRenderer = {
     new = function(self, sprites, animationTime, cycles)
         return {
@@ -424,6 +427,7 @@ C_VelocityController = {
     --This is a really inefficient implementation of a velocity controller,
     --Because it basically needs to do a pixel by pixel simulation of the projectile in both directions.
     --I tried using a raycast here, but this is even worse.
+    --But since it does not eat much performance, who cares.
     new = function(self, takeSteps, simulationSteps)
         return{
             takeSteps = takeSteps or false,
@@ -717,19 +721,37 @@ C_FlagPickup = {
         return {
             pickUpDistance = 5,
             pickedUpPlayer = nil,
+            padParticleSpawnTimer = 20,
             update = function(self, owner)
                 local player = Game.players[owner.flagID == 30 and 2 or 1]
                 if(player == nil) then 
-                    pickedUpPlayer = nil
+                    self.pickedUpPlayer = nil
                     return
                 end
-                if(pickedUpPlayer == nil) then
+                if(self.pickedUpPlayer == nil) then
                     if(distance(player.transform.position, owner.transform.position) <= self.pickUpDistance) then
-                        pickedUpPlayer = player
+                        self.pickedUpPlayer = player
                     end
                 end
-                if(pickedUpPlayer ~= nil) then
-                    owner.transform.position = pickedUpPlayer.transform.position + vec2(pickedUpPlayer.isFacingRight and 1 or 3, -3)
+                if(self.pickedUpPlayer ~= nil) then
+                    
+                    owner.transform.position = self.pickedUpPlayer.transform.position + vec2(self.pickedUpPlayer.isFacingRight and 1 or 3, -3)
+                    local pad = Game.flagPads[owner.flagID - 29]
+                    self.padParticleSpawnTimer -= 1
+                    if(self.padParticleSpawnTimer <= 0) then
+                        self.padParticleSpawnTimer = 10
+                        FlagPadParticle:new(pad.transform.position.x + rnd(4) - 2, pad.transform.position.y, owner.flagID == 30 and 8 or 12)
+                    end
+                    --Check if flag is at pad
+                    if(distance(player.transform.position, pad.transform.position) <= 5) then
+                        Game.score[owner.flagID - 29] += 1
+                        for x = 0, 15 do
+                            GravityParticle:new(pad.transform.position.x, pad.transform.position.y, ceil(rnd(14)), rnd(4)-2, rnd(7))
+                        end
+                        updateScore = true
+                        GameRestarter:new(120)
+                        foreach(Game.flags, function(obj) obj:destroy(self) end)
+                    end
                 end
             end
         }
@@ -789,7 +811,7 @@ Particle = {
     new = function(self, x, y, color)
         local me = Entity:new(x, y)
         add(me.renderComponents, C_PixelRenderer:new(color))
-        me.lifetime = 60
+        me.lifetime = 30
         me.update = function(self)
             self.transform.position += vec2(self.velocity.x, -self.velocity.y)
             self.lifetime -= 1
@@ -801,15 +823,31 @@ Particle = {
     end
 }
 
-BloodParticle = {
-    new = function(self, x, y)
-        local me = Particle:new(x, y, 8)
-        me.velocity = vec2(rnd(2)-1, rnd(3))
+GravityParticle = {
+    new = function(self, x, y, color, velocityX, velocityY)
+        local me = Particle:new(x, y, color)
+        me.velocity = vec2(velocityX, velocityY)
         me.oldUpdate = me.update
         me.update = function(self)
             self.velocity -= vec2(0, 0.1)
             self:oldUpdate()
         end
+        return me
+    end
+}
+
+BloodParticle = {
+    new = function(self, x, y)
+        return GravityParticle:new(x, y, 8, rnd(2)-1, rnd(3))
+    end
+}
+
+FlagPadParticle = {
+    new = function(self, x, y, color)
+        local me = Particle:new(x, y, color)
+        me.velocity = vec2(rnd(1)-0.5, rnd(1)+0.5)
+        me.lifetime = 20
+        return me
     end
 }
 
@@ -817,18 +855,11 @@ ExplosionAnim = {
     new = function(self, x, y, sprites)
         local me = Entity:new(x, y)
         add(me.renderComponents, C_AnimatedSpriteRenderer:new(sprites,3, false))
-        add(me.components,C_Lifetime:new (15))
+        add(me.components, C_Lifetime:new(12))
+        return me
     end
 }
 
-
-FlagPadParticle = {
-    new = function(self, x, y, color)
-        local me = Particle:new(x, y, color)
-        me.velocity = vec2(rnd(1)-0.5, rnd(2)+1)
-        me.lifetime = 30
-    end
-}
 
 Entity = {
     new = function(self, x, y)
@@ -889,6 +920,7 @@ Player = {
             self.playerID += 1
             entity.playerID = self.playerID
             add(Game.players, entity)
+            add(Game.score, 0)
         else
             entity.playerID = playerID
             Game.players[playerID] = entity
@@ -916,20 +948,41 @@ PlayerRespawner = {
             self.respawnTimer -= 1
             if(self.respawnTimer <= 0) then
                 Player:new(x, y, playerID)
-                foreach(Game.players, function(obj) 
-                    obj.healthSystem.health = obj.healthSystem.maxHealth 
-                    obj.flag = nil
-                end)
-                foreach(Game.flags, function(obj) 
-                    obj:destroy()
-                end)
-                Game.flags = {}
                 createHealthBar()
-                FlagPickup:new(30)
-                FlagPickup:new(31)
                 self:destroy()
             end
         end
+    end
+}
+
+GameRestarter = {
+    new = function(self, time)
+        local entity = Entity:new(x, y)
+        entity.time = time
+        entity.update = function(self)
+            self.time -= 1
+            --We split the respawn over multiple frames to avoid lag
+            if(self.time==0) then
+                foreach(Game.objects, function(obj) 
+                    if(obj ~= self) then 
+                        obj:destroy(self) 
+                    end 
+                end)
+            elseif(self.time == -1) then
+                Player:new(20,20, 1)
+                Player:new(490,20, 2)
+            elseif(self.time == -2) then
+                FlagPickup:new(30)
+                FlagPickup:new(31)
+            elseif(self.time == -3) then
+                FlagPad:new(32)
+                FlagPad:new(33)
+            elseif(self.time == -4) then
+                createHealthBar()
+                self:destroy()
+            end
+        end
+        return entity
     end
 }
 
@@ -1151,7 +1204,6 @@ end
 --Activate Multiscreen Feature
 poke(0x5f36,1)
 function _draw()
-    printh(#Game.objects)
     if(forceRedraw) then
         --Redraw the whole map
         return redrawScreen()
@@ -1162,11 +1214,15 @@ function _draw()
         end
         --Draw entities
         foreach(Game.objects, function(obj) obj:draw(self) end)
-        --if(stat(3) == 3) then 
-            --AvgPerformance += stat(1)
-            --Time += 1
-            --printh("Performance: "..stat(1)..", Frame: "..Time..", Average: "..(AvgPerformance / Time))
-        --end
+        if(stat(3) == 3) then 
+            AvgPerformance += stat(1)
+            Time += 1
+            printh("Performance: "..stat(1)..", Frame: "..Time..", Average: "..(AvgPerformance / Time))
+        end
+        if(updateScore and stat(3) == 2) then 
+            print(Game.score[1].."-"..Game.score[2], 1, 1, 7)
+            updateScore = false
+        end
         return stat(3)<3
     end
 end
