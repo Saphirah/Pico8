@@ -31,8 +31,14 @@ Projectile_Pellet = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_PixelRenderer:new(10))
-        me.destroy = function(self)            
-            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{65,66,67,68})
+        me.destroy = function(self)
+            explosion = ceil(rnd(2))
+            if explosion == 1 then                    
+                ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{65,66,67,68})
+            end
+            if explosion == 2 then                    
+                ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{65,66,67,68})
+            end
             del(Game.objects, self)
         end
         return me
