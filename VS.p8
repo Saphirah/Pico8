@@ -330,13 +330,14 @@ Explosion = {
 
 --RenderComponent that draws a Sprite
 C_SpriteRenderer = {
-    new = function(self, spriteIndex)
+    new = function(self, spriteIndex, offsetX, offsetY)
         return {
             spriteIndex = spriteIndex,
             dim = Textures[spriteIndex].dimension,
+            offset = vec2(offsetX or 0, offsetY or 0),
             draw = function(self, owner)
                 if(owner.transform.position.x == nil) then return end
-                local drawPos = vec2(owner.transform.position.x - self.dim.x / 2, owner.transform.position.y - self.dim.y)
+                local drawPos = vec2(owner.transform.position.x - self.dim.x / 2, owner.transform.position.y - self.dim.y) + self.offset
                 local posX = drawPos.x - stat(3) * 128
                 if((posX >= 0 and posX < 128) or (posX + self.dim.x >= 0 and posX + self.dim.x < 128)) then
                     cspr(self.spriteIndex, drawPos.x, drawPos.y, not owner.isFacingRight)
@@ -351,17 +352,18 @@ C_SpriteRenderer = {
 
 --RendererComponent that draws different sprites each frame
 C_AnimatedSpriteRenderer = {
-    new = function(self, sprites, animationTime, cycles)
+    new = function(self, sprites, animationTime, cycles, offsetX, offsetY)
         return {
             sprites = sprites,
             cycles = cycles,
             spriteIndex = 1,
             animationTimeMax = animationTime,
             animationTime = animationTime,
+            offset = vec2(offsetX or 0, offsetY or 0),
             draw = function(self, owner)
                 dim = Textures[self.sprites[self.spriteIndex]].dimension
                 if(owner.transform.position.x == nil) then return end
-                local drawPos = vec2(owner.transform.position.x - dim.x / 2, owner.transform.position.y - dim.y)
+                local drawPos = vec2(owner.transform.position.x - dim.x / 2, owner.transform.position.y - dim.y) + self.offset
                 local posX = drawPos.x - stat(3) * 128
                 if((posX >= 0 and posX < 128) or (posX + dim.x >= 0 and posX + dim.x < 128)) then
                     cspr(self.sprites[self.spriteIndex], drawPos.x, drawPos.y, not owner.isFacingRight)
@@ -428,27 +430,36 @@ C_VelocityController = {
     --Because it basically needs to do a pixel by pixel simulation of the projectile in both directions.
     --I tried using a raycast here, but this is even worse.
     --But since it does not eat much performance, who cares.
-    new = function(self, takeSteps, simulationSteps)
+    new = function(self, takeSteps, simulationSteps, screenBounds)
         return{
             takeSteps = takeSteps or false,
             simulationSteps = simulationSteps or 3,
+            screenBounds = screenBounds or false,
             update = function(self, owner)
                 --Handle Y Velocity
                 local velocityDir = self.simulationSteps * vec2(owner.velocity.x / abs(owner.velocity.x), owner.velocity.y / abs(owner.velocity.y))
                 local velocity = vec2(owner.velocity.x, owner.velocity.y)
 
                 --Screen Bounds
-                if(velocity.x + owner.transform.position.x < 0) then 
-                    velocity.x = -owner.transform.position.x
-                elseif(velocity.x + owner.transform.position.x > Map.screens.x * 128) then
-                    velocity.x = Map.screens.x * 128 - owner.transform.position.x
+                if(screenBounds) then
+                    if(velocity.x + owner.transform.position.x < 0) then 
+                        velocity.x = -owner.transform.position.x
+                    elseif(velocity.x + owner.transform.position.x > Map.screens.x * 128) then
+                        velocity.x = Map.screens.x * 128 - owner.transform.position.x
+                    end
+
+                    if(owner.transform.position.y - velocity.y < 0) then 
+                        velocity.y = owner.transform.position.y
+                    elseif(owner.transform.position.y - velocity.y > Map.screens.y * 128) then
+                        velocity.y = owner.transform.position.y - Map.screens.y * 128
+                    end
+                --Kill when out of screen
+                else
+                    if(velocity.x + owner.transform.position.x < 0 or velocity.x + owner.transform.position.x > Map.screens.x * 128 or velocity.y + owner.transform.position.y < 0 or velocity.y + owner.transform.position.y > Map.screens.y * 128) then
+                        owner:destroy()
+                    end
                 end
 
-                if(owner.transform.position.y - velocity.y < 0) then 
-                    velocity.y = owner.transform.position.y
-                elseif(owner.transform.position.y - velocity.y > Map.screens.y * 128) then
-                    velocity.y = owner.transform.position.y - Map.screens.y * 128
-                end
 
                 --Handle Y Velocity
                 local hitGround = false
@@ -931,7 +942,7 @@ Player = {
         entity.flag = nil
 
         add(entity.components, C_PlayerController:new(entity.playerID))
-        add(entity.components, C_VelocityController:new(true, 1))
+        add(entity.components, C_VelocityController:new(true, 1, true))
         add(entity.components, C_HealthSystem:new(entity, 50))
         add(entity.renderComponents, C_SpriteRenderer:new(entity.playerID == 1 and 5 or 6))
         return entity
@@ -1069,21 +1080,21 @@ function redrawRegion(posX, posY, width, height)
     local screen = stat(3)
     posX = flr(posX) - screen * 128
     posY = flr(posY)
-    if((posX >= 0 and posX < 128) or (posX + width >= 0 and posX + width < 128)) then
-        local xFrom = max(posX,0)
-        local xTo = min(posX + width, 127)
-        local yFrom = max(posY, 0)
-        local yTo = min(posY + height, 127)
-        for x = xFrom, xTo do
-            for y = yFrom, yTo do
-                local pixel = Map:getMapDataByScreen(x, y, screen)
-                local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
-                if(color ~= pget(x, y)) then
-                    pset(x, y, color)
-                end
+    if(not((posX >= 0 and posX < 128) or (posX + width >= 0 and posX + width < 128))) then return false end
+    local xFrom = max(posX,0)
+    local xTo = min(posX + width, 127)
+    local yFrom = max(posY, 0)
+    local yTo = min(posY + height, 127)
+    for x = xFrom, xTo do
+        for y = yFrom, yTo do
+            local pixel = Map.mapData[screen][y * 128 + x]
+            local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
+            if(color ~= pget(x, y)) then
+                pset(x, y, color)
             end
         end
     end
+    return true
 end
 
 --Redraws a pixel of the screen
@@ -1106,29 +1117,30 @@ function redrawSprite(posX, posY, spriteIndex, isFlipped)
     posY = flr(posY)
     local width = Textures[spriteIndex].dimension.x
     local height = Textures[spriteIndex].dimension.y
-    if((posX >= 0 and posX < 128) or (posX + width >= 0 and posX + width < 128)) then
-        for x = max(posX,0), min(posX + width, 127) do
-            for y = max(posY, 0), min(posY + height, 127) do
-                if(isFlipped) then
-                    if(sget(Textures[spriteIndex].position.x + width - (x - posX + 1), Textures[spriteIndex].position.y + y - posY) ~= 0) then
-                        local pixel = Map:getMapDataByScreen(x, y, screen)
-                        local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
-                        if(color ~= pget(x, y)) then
-                            pset(x, y, color)
-                        end
+    if(not((posX >= 0 and posX < 128) or (posX + width >= 0 and posX + width < 128))) then return false end
+
+    for x = max(posX,0), min(posX + width, 127) do
+        for y = max(posY, 0), min(posY + height, 127) do
+            if(isFlipped) then
+                if(sget(Textures[spriteIndex].position.x + width - (x - posX + 1), Textures[spriteIndex].position.y + y - posY) ~= 0) then
+                    local pixel = Map:getMapDataByScreen(x, y, screen)
+                    local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
+                    if(color ~= pget(x, y)) then
+                        pset(x, y, color)
                     end
-                else
-                    if(sget(x - posX + Textures[spriteIndex].position.x, y - posY + Textures[spriteIndex].position.y) ~= 0) then
-                        local pixel = Map:getMapDataByScreen(x, y, screen)
-                        local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
-                        if(color ~= pget(x, y)) then
-                            pset(x, y, color)
-                        end
+                end
+            else
+                if(sget(x - posX + Textures[spriteIndex].position.x, y - posY + Textures[spriteIndex].position.y) ~= 0) then
+                    local pixel = Map:getMapDataByScreen(x, y, screen)
+                    local color = sget(x % Textures[pixel].dimension.x + Textures[pixel].position.x, y % Textures[pixel].dimension.y + Textures[pixel].position.y)
+                    if(color ~= pget(x, y)) then
+                        pset(x, y, color)
                     end
                 end
             end
         end
     end
+    return true
 end
 
 --Draws a pixel of a specific id at a specific pixel
@@ -1174,12 +1186,10 @@ function redrawBuffer()
         else
             redrawRegion(i.position.x, i.position.y, i.dimension.x, i.dimension.y)
         end
-        if(stat(1) > 0.7) then break end
     end
     palt(0, true)
     if(stat(3)==3) then
-        Map.redrawBuffer = Map.nextRedrawBuffer
-        Map.nextRedrawBuffer = {}
+        Map.redrawBuffer = {}
     end
 end
 

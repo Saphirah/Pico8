@@ -22,7 +22,7 @@ Weapon = {
 --A weapon pickup
 WeaponDrop = {
     new = function(self, weaponID)
-        local me = Entity:new(flr(rnd(516)), 0)
+        local me = Entity:new(flr(rnd(516)), 1)
         me.weaponID = weaponID
         me.lastDownVelocity = 0
         me.onHitGround = function(self)
@@ -86,7 +86,7 @@ Weapon_LaunchWeapon = {
         local me = Weapon:new(parent, 12)
         me.cooldown = 60
         me.shoot = function(self)
-            Projectile_Launcher:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 400, 7)
+            Projectile_Launcher:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 200, 7)
             sfx(10)
         end
         
@@ -157,8 +157,8 @@ Weapon_SniperWeapon = {
         local me = Weapon:new(parent, 15)
         me.cooldown = 50
         me.shoot = function(self)
-            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 25 or -25, 0, self.parent.playerID, 15, 6, 30, 30, 4)
-            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 22 or -22, 0, self.parent.playerID, 15, 6, 30, 30, 4)
+            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 15 or -15, 0, self.parent.playerID, 15, 6, 30, 30, 4)
+            Projectile_Sniper:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 13 or -13, 0, self.parent.playerID, 15, 6, 30, 30, 4)
         end
         me.isShooting = function(self)
             if(self.cooldown > 0) then
