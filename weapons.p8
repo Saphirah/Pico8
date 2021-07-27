@@ -1,3 +1,4 @@
+--__lua__
 --Base abstract class for a weapon.
 Weapon = {
     new = function(self, parent, spriteID)
@@ -48,6 +49,7 @@ Weapon_Shotgun = {
         me.cooldown = 45
         me.shoot = function(self)
             sfx(8)
+            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{50,51,52})
             self.parent.velocity.x = self.parent.isFacingRight and -10 or 10
             for i = 0, 4 do
                 Projectile_Pellet:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 3 or -3, rnd(1) - 0.5, self.parent.playerID, 10, 7, rnd(4)+6, 4)
@@ -84,9 +86,7 @@ Weapon_LaunchWeapon = {
         local me = Weapon:new(parent, 12)
         me.cooldown = 60
         me.shoot = function(self)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 400, 8)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y-1, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 5, 14, 6, 400, 3)
-            Projectile_Laser:new(self.transform.position.x, self.transform.position.y+1, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 5, 14, 6, 400, 3)
+            Projectile_Launcher:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 400, 8)
             sfx(10)
         end
         
