@@ -192,7 +192,12 @@ Textures = {
     [40] = {
         position = vec2(80, 0),
         dimension = vec2(8, 8)
-    }
+    },
+        --Leafs
+    [42] = {
+            position = vec2(80, 0),
+            dimension = vec2(8, 8)
+        }
 }
 
 debug = false
@@ -237,6 +242,41 @@ C_SpriteRenderer = {
                 end
                 if(stat(3) == 3) then
                     add(Map.redrawBuffer, { position = vec2(drawPos.x, drawPos.y), spriteIndex = self.spriteIndex, flipped = not owner.isFacingRight })
+                end
+            end
+        }
+    end
+}
+
+C_AnimatedSpriteRenderer = {
+    new = function(self, sprites, animationTime, cycle)
+        return {
+            sprites = sprites,
+            cycle = cycle,
+            spriteIndex = 1,
+            animationTimeMax = animationTime,
+            animationTime = animationTime,
+            draw = function(self, owner)
+                dim = Textures[self.sprites[self.spriteIndex]].dimension
+                if(owner.transform.position.x == nil) then return end
+                local drawPos = vec2(owner.transform.position.x - dim.x / 2, owner.transform.position.y - dim.y)
+                local posX = drawPos.x - stat(3) * 128
+                if((posX >= 0 and posX < 128) or (posX + dim.x >= 0 and posX + dim.x < 128)) then
+                    cspr(self.sprites[self.spriteIndex], drawPos.x, drawPos.y, not owner.isFacingRight)
+                end
+                if(stat(3) == 3) then
+                    add(Map.redrawBuffer, { position = vec2(drawPos.x, drawPos.y), spriteIndex = self.sprites[self.spriteIndex], flipped = not owner.isFacingRight })
+                    if self.animationTime >= 0 then
+                        self.animationTime -= 1
+                    else 
+                        if self.spriteIndex < #self.sprites then
+                            self.spriteIndex += 1
+                        end
+                        if self.cycles and self.spriteIndex == #self.sprites + 1 then
+                            self.spriteIndex = 1
+                        end
+                        self.animationTime = self.animationTimeMax
+                    end                    
                 end
             end
         }
@@ -426,6 +466,12 @@ C_PlayerController = {
                         if(Map:getMapData(self.stairPosition.x, y)<=0) then 
                             Map:setMapData(self.stairPosition.x, y, 2)
                         end
+                    local otherPlayer = Game.players[playerID == 1 and 2 or 1]
+                        if(otherPlayer ~= nil) then
+                            if(distance(self.stairPosition, otherPlayer.transform.position) <= 5) then
+                                otherPlayer.healthSystem:applyDamage(30)
+                            end
+                        end
                     end
                     add(Map.redrawBuffer, { position = vec2(self.stairPosition.x, self.stairPosition.y), dimension = vec2(1, self.stairStartHeight - self.stairPosition.y) })
                     self.stairPosition.x += self.stairDirection and 1 or -1
@@ -438,7 +484,7 @@ C_PlayerController = {
                     local otherPlayer = Game.players[playerID == 1 and 2 or 1]
                     if(otherPlayer ~= nil) then
                         if(distance(owner.transform.position, otherPlayer.transform.position) <= 6) then
-                            otherPlayer.healthSystem:applyDamage(25)
+                            otherPlayer.healthSystem:applyDamage(20)
                         end
                     end
                 end
@@ -667,6 +713,15 @@ BloodParticle = {
         end
     end
 }
+
+ExplosionAnim = {
+    new = function(self, x, y, sprites)
+        local me = Entity:new(x, y)
+        add(me.renderComponents, C_AnimatedSpriteRenderer:new(sprites,3, false))
+        add(me.components,C_Lifetime:new (15))
+    end
+}
+
 
 FlagPadParticle = {
     new = function(self, x, y, color)
@@ -1040,10 +1095,10 @@ __gfx__
 0000000000000000000000000000000000000dd00000000000000000000000004f444444fff44444e882e882000000004444444444544544555d5555555d555d
 000000000000000000000000000000bb0000d0000000055000000000000000604ff4444ffff4444482e882e8000000004444544444444444d555d5555dd555d5
 000040000000f000000005000000bb500000d00d00005550000000000000060044fffff44ff44444cdd1cdd10000000044464f4444454454d555555dd5555555
-0a911dc00a9112e000005000000b3b0000ee5dd00001550000000000000c60004444f4444f444444d1cdd1cd0060600044f444f444444544d55555d555555555
-091cc61909188e19000d400000b3b0000ee7e0000019dc000009009000d790004444f4444f44444400000000000900004544494454444444555d5555555d5555
-091ccc100918881000640000003b000002ee200001dd00c000900a0002755000444ff4444f444444000000000060600044545444444444f45555d55555d55555
-00dc1c0000281800005000000bd000000022500001d1000009a590000094000044ff44444fff44440000000000000000444444454444f444555d555d55555d55
+0a911dc00a9112e000005000000b3b0000ee5dd00001550000000000000c60004444f4444f444444d1cdd1cd0000000044f444f444444544d55555d555555555
+091cc61909188e19000d400000b3b0000ee7e0000019dc000009009000d790004444f4444f44444460600000000000004544494454444444555d5555555d5555
+091ccc100918881000640000003b000002ee200001dd00c000900a0002755000444ff4444f444444090000000000000044545444444444f45555d55555d55555
+00dc1c0000281800005000000bd000000022500001d1000009a590000094000044ff44444fff44446060000000000000444444454444f444555d555d55555d55
 000c0100000801000050000000d0000000d5000000d00000004040000040000044f4444444ff444400000000000000004444445444444544555555d5555555dd
 000000000000000000000000000000000000000000000000000000000000000051100000522000000000000000000000d33333333333333b5555415141554555
 00000000000000000000000000000000000200d00000000000000000000000005dd110005ee22000000090000904000033b3333b3b33b3335555115445555155

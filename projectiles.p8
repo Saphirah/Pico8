@@ -1,3 +1,5 @@
+__lua__
+
 --Abstract Projectile Class
 Projectile = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
@@ -29,6 +31,10 @@ Projectile_Pellet = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_PixelRenderer:new(10))
+        me.destroy = function(self)            
+            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{13,14,15})
+            del(Game.objects, self)
+        end
         return me
     end
 }
@@ -37,6 +43,14 @@ Projectile_Laser = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
         add(me.renderComponents, C_LineRenderer:new(color, width))
+        return me
+    end
+}
+
+Projectile_Launcher = {
+    new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
+        local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
+        add(me.renderComponents, C_AnimatedSpriteRenderer:new({48,49}, 2, true))
         return me
     end
 }
