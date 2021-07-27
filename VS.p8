@@ -348,10 +348,10 @@ C_SpriteRenderer = {
 }
 
 C_AnimatedSpriteRenderer = {
-    new = function(self, sprites, animationTime, cycle)
+    new = function(self, sprites, animationTime, cycles)
         return {
             sprites = sprites,
-            cycle = cycle,
+            cycles = cycles,
             spriteIndex = 1,
             animationTimeMax = animationTime,
             animationTime = animationTime,
@@ -367,12 +367,12 @@ C_AnimatedSpriteRenderer = {
                     add(Map.redrawBuffer, { position = vec2(drawPos.x, drawPos.y), spriteIndex = self.sprites[self.spriteIndex], flipped = not owner.isFacingRight })
                     if self.animationTime >= 0 then
                         self.animationTime -= 1
-                    else 
+                    else                        
+                        if self.cycles and self.spriteIndex == #self.sprites then
+                            self.spriteIndex = 0
+                        end 
                         if self.spriteIndex < #self.sprites then
                             self.spriteIndex += 1
-                        end
-                        if self.cycles and self.spriteIndex == #self.sprites + 1 then
-                            self.spriteIndex = 1
                         end
                         self.animationTime = self.animationTimeMax
                     end                    

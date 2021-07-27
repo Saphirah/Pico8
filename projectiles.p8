@@ -60,7 +60,7 @@ Projectile_Laser = {
 Projectile_Launcher = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
-        add(me.renderComponents, C_AnimatedSpriteRenderer:new({57,58}, 2, true))
+        add(me.renderComponents, C_AnimatedSpriteRenderer:new({57,58}, 5, true))
         me.destroy = function(self)            
             ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{60,61})
             del(Game.objects, self)

@@ -86,7 +86,7 @@ Weapon_LaunchWeapon = {
         local me = Weapon:new(parent, 12)
         me.cooldown = 60
         me.shoot = function(self)
-            Projectile_Launcher:new(self.transform.position.x, self.transform.position.y, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 400, 8)
+            Projectile_Launcher:new(self.transform.position.x, self.transform.position.y + 5, self.parent.isFacingRight and 1 or -1, 0, self.parent.playerID, 25, 12, 6, 400, 6)
             sfx(10)
         end
         
