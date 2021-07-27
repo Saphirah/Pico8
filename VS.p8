@@ -1,6 +1,8 @@
 pico-8 cartridge // http://www.pico-8.com
 version 32
 __lua__
+--lADDER
+--2 pLAYER pVp
 
 --We know a lot of this code is not optimized for token count and very bad to read.
 --This is due to speed optimization.
