@@ -18,9 +18,5 @@ end
 
 --Round function with 0.5-based rounding
 function round(x)
-    if(x%1 >= 0.5) then
-        return ceil(x)
-    else
-        return flr(x)
-    end
+    return x%1 >= 0.5 and ceil(x) or flr(x)
 end

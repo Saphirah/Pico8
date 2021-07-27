@@ -7,6 +7,8 @@ __lua__
 --Often to save token counts in critical loops we did not use the function, 
 --but implemented the code directly to save cycles.
 
+--I think the implementation of token counts is bad, because it supports bad written code.
+
 #include vector.p8
 #include noise.p8
 #include math.p8
@@ -27,7 +29,7 @@ Game = {
     flagPads = {},
     weaponTimer = 300,
     score = {},
-    scoreToWin = 1,
+    scoreToWin = 3,
     isOver = false
 }
 
@@ -306,6 +308,11 @@ Textures = {
         position = vec2(83, 12),
         dimension = vec2(4, 4)
     },
+    --Empty but with collisions for title screen
+    [100] = {
+        position = vec2(0, 0),
+        dimension = vec2(1, 1)
+    },
 }
 
 debug = false
@@ -316,6 +323,7 @@ updateScore = true
 --Spawns an explosion and destroys the environment
 Explosion = {
     new = function(self, x, y, radius)
+        if(Game.isOver) then return end
         x = flr(x)
         y = flr(y)
         for dx = -radius, radius do
@@ -323,11 +331,7 @@ Explosion = {
                 if(dx*dx + dy*dy <= radius * radius) then
                     local ex = mid(flr(dx + x), Map.screens.x*127)
                     local ey = mid(flr(dy + y), Map.screens.y*127)
-                    if(y + dy > Map.waterHeight) then
-                        Map.mapData[mid(flr(ex/128), 3)][ey * 128 + (ex % 128)] = -1
-                    else
-                        Map.mapData[mid(flr(ex/128), 3)][ey * 128 + (ex % 128)] = 0
-                    end
+                    Map.mapData[mid(flr(ex/128), 3)][ey * 128 + (ex % 128)] = y + dy > Map.waterHeight and -1 or 0
                 end
             end
         end
@@ -514,17 +518,6 @@ C_VelocityController = {
                 if(hitGround) then
                     owner:onHitGround()
                 end
-            end
-        }
-    end
-}
-
---Component that adds velocity, but no collision
-C_VelocityController_NoCollision = {
-    new = function(self)
-        return{
-            update = function(self, owner)
-                owner.transform.position += vec2(owner.velocity.x, -owner.velocity.y)
             end
         }
     end
@@ -980,17 +973,27 @@ ScreenClearer = {
         local me = Entity:new(0, 0)
         me.update = function(self)
             self.transform.position.x += 2
-            if(self.transform.position.x > 128) then
-                if(Game.score[1] >= Game.scoreToWin) then
-                    Player:new(250, 20, 1)
-                else
-                    Player:new(250, 20, 2)
-                end
-                self:destroy()
+            if(self.transform.position.x == 128) then
+                local player = Player:new(250, 20, Game.score[1] >= Game.scoreToWin and 1 or 2)
+                player.weapon:destroy()
+            end
+            if(self.transform.position.x > 600) then
+                load("VS")
+                run()
             end
         end
         me.draw = function(self)
-            rectfill(self.transform.position.x, 0, self.transform.position.x + 1, 128)
+            if(self.transform.position.x <= 128) then
+                rectfill(self.transform.position.x, 0, self.transform.position.x + 1, 128, 0)
+                for y = 0, 128 do
+                    local height = y > 80 and 100 or 0
+                    local index = y * 128 + (self.transform.position.x % 128)
+                    Map.mapData[stat(3)][index] = height
+                    Map.mapData[stat(3)][index - 1] = height
+                end
+            end
+            if(stat(3) == 1) then print("pLAYER "..(Game.score[1] >= Game.scoreToWin and "1" or "2"), 92, 20, 7) end
+            if(stat(3) == 2) then print("wINS", 0, 20, 7) end
         end
     end
 }
@@ -1010,7 +1013,7 @@ GameRestarter = {
                 end)
                 Game.isOver = Game.score[1] >= Game.scoreToWin or Game.score[2] >= Game.scoreToWin
             end
-            if(Game.isGameOver) then
+            if(Game.isOver) then
                 if(self.time==0) then
                     ScreenClearer:new()
                     self:destroy()
@@ -1087,21 +1090,12 @@ function generateMap()
                 local distance = Map.groundHeight + Simplex2D((x + screenX * 128) / 200, seed) * 25 + Simplex2D((x + screenX * 128) / 50, seed) * 5 - y
                 if distance < 0 then
                     --Create Grass
-                    if(distance > -8 + Simplex2D((x + screenX * 128), 99) * 5) then
-                        Map.mapData[screenX][x + y * 128] = 3
                     --Create Dirt
-                    else
-                        Map.mapData[screenX][x + y * 128] = 1
-                    end
+                    Map.mapData[screenX][x + y * 128] = distance > -8 + Simplex2D((x + screenX * 128), 99) * 5 and 3 or 1
                 --Above Ground
                 else
-                    --Create Water
-                    if(y > Map.waterHeight) then
-                        Map.mapData[screenX][x + y * 128] = -1
-                    --Create Air
-                    else
-                        Map.mapData[screenX][x + y * 128] = 0
-                    end
+                    --Create Water or Air
+                    Map.mapData[screenX][x + y * 128] = y > Map.waterHeight and -1 or 0
                 end
             end
         end
@@ -1256,6 +1250,7 @@ end
 
 function _update60()
     foreach(Game.objects, function(obj) obj:update(self) end)
+    if(Game.isOver) then return end
     spawnWeapon()
 end
 
@@ -1272,11 +1267,11 @@ function _draw()
         end
         --Draw entities
         foreach(Game.objects, function(obj) obj:draw(self) end)
-        if(stat(3) == 3) then 
-            AvgPerformance += stat(1)
-            Time += 1
-            printh("Performance: "..stat(1)..", Frame: "..Time..", Average: "..(AvgPerformance / Time))
-        end
+        --if(stat(3) == 3) then 
+        --    AvgPerformance += stat(1)
+        --    Time += 1
+        --    printh("Performance: "..stat(1)..", Frame: "..Time..", Average: "..(AvgPerformance / Time))
+        --end
         if(updateScore and stat(3) == 2) then 
             rectfill(1,1,15, 5, 0)
             print(Game.score[1].."-"..Game.score[2], 1, 1, 7)
