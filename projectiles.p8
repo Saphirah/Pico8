@@ -34,10 +34,10 @@ Projectile_Pellet = {
         me.destroy = function(self)
             explosion = ceil(rnd(2))
             if explosion == 1 then                    
-                ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{65,66,67,68})
+                ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{65,66,68})
             end
             if explosion == 2 then                    
-                ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{65,66,67,68})
+                ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{65,67,68})
             end
             del(Game.objects, self)
         end
@@ -60,9 +60,9 @@ Projectile_Laser = {
 Projectile_Launcher = {
     new = function(self, x, y, velocityX, velocityY, playerID, damage, color, width, lifetime, explosionRadius)
         local me = Projectile:new(x, y, velocityX, velocityY, playerID, damage, color, lifetime, explosionRadius)
-        add(me.renderComponents, C_AnimatedSpriteRenderer:new({57,58}, 2, true))
+        add(me.renderComponents, C_AnimatedSpriteRenderer:new({57,58}, 5, true))
         me.destroy = function(self)            
-            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{60,61})
+            ExplosionAnim:new (self.transform.position.x,self.transform.position.y,{60,60,61,42})
             del(Game.objects, self)
         end
         return me
